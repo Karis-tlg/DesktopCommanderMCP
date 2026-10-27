@@ -45,6 +45,14 @@ class FeatureFlagManager {
       // Load from cache immediately (non-blocking)
       await this.loadFromCache();
       
+      // This independent fork does not contact Desktop Commander's production
+      // feature-flag service unless explicitly opted in for development.
+      if (process.env.KARIS_ALLOW_REMOTE_FLAGS !== '1') {
+        if (this.resolveFreshFetch) this.resolveFreshFetch();
+        logger.info('Remote feature flags disabled in private mode');
+        return;
+      }
+
       // Fetch in background (don't block startup)
       this.fetchFlags().then(() => {
         // Signal that fresh flags are now available
@@ -164,6 +172,7 @@ class FeatureFlagManager {
    * Fetch flags from remote URL
    */
   private async fetchFlags(): Promise<void> {
+    if (process.env.KARIS_ALLOW_REMOTE_FLAGS !== '1') return;
     const FETCH_TIMEOUT_MS = 3000;
     const controller = new AbortController();
     const abortTimeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);

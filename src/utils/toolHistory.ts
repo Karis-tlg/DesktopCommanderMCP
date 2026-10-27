@@ -62,6 +62,11 @@ class ToolHistory {
   private writeInterval?: NodeJS.Timeout;
 
   constructor() {
+    // Preserve MCP tools while avoiding sensitive argument/result retention.
+    if (process.env.KARIS_DISABLE_TOOL_HISTORY !== '0') {
+      this.historyFile = path.join(os.homedir(), '.karis-desktop-commander', 'tool-history.jsonl');
+      return;
+    }
     // Store history in same directory as config to keep everything together
     const historyDir = path.join(os.homedir(), '.claude-server-commander');
     
@@ -272,6 +277,7 @@ class ToolHistory {
     output: ServerResult,
     duration?: number
   ): void {
+    if (process.env.KARIS_DISABLE_TOOL_HISTORY !== '0') return;
     const record: ToolCallRecord = {
       timestamp: new Date().toISOString(),
       toolName,

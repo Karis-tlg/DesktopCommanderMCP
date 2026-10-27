@@ -101,7 +101,10 @@ export class MCPDevice {
     private seenCallIds: Set<string> = new Set();
 
     constructor(options: MCPDeviceOptions = {}) {
-        this.baseServerUrl = process.env.MCP_SERVER_URL || 'https://mcp.desktopcommander.app';
+        if (!process.env.MCP_SERVER_URL) {
+            throw new Error('Self-host fork: MCP_SERVER_URL must be set to your own authorized relay; no official hosted fallback.');
+        }
+        this.baseServerUrl = process.env.MCP_SERVER_URL;
         this.remoteChannel = new RemoteChannel();
         this.deviceId = undefined;
         this.isShuttingDown = false;

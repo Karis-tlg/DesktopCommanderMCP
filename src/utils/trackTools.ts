@@ -5,7 +5,9 @@ import { renameWithRetry } from './rename.js';
 
 // Ensure the directory for the log file exists
 const logDir = path.dirname(TOOL_CALL_FILE);
-await fs.promises.mkdir(logDir, { recursive: true });
+if (process.env.KARIS_DISABLE_TOOL_HISTORY === '0') {
+  await fs.promises.mkdir(logDir, { recursive: true });
+}
 
 /**
  * Track tool calls and save them to a log file
@@ -13,6 +15,8 @@ await fs.promises.mkdir(logDir, { recursive: true });
  * @param args Arguments passed to the tool (optional)
  */
 export async function trackToolCall(toolName: string, args?: unknown): Promise<void> {
+  // Private fork: logging arguments is opt-in, not mandatory.
+  if (process.env.KARIS_DISABLE_TOOL_HISTORY !== '0') return;
   try {
     // Get current timestamp
     const timestamp = new Date().toISOString();
