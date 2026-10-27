@@ -1,0 +1,76 @@
+import { WebSocket } from 'ws';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { createInterface } from 'node:readline/promises';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const args=process.argv.slice(2);
+const flag = name => {const ix=args.indexOf(name);return ix>=0?args[ix+1]:undefined};
+const configDir=process.env.KARIS_AGENT_CONFIG_DIR||path.join(os.homedir(),'.karis-desktop-commander-agent');
+const configFile=path.join(configDir,'config.json');
+const conf=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8')):{};
+let endpoint=flag('--endpoint')||process.env.KARIS_RELAY_URL||conf.endpoint;
+let token=flag('--token')||process.env.KARIS_AGENT_TOKEN||conf.token;
+async function prompt(){
+ if(endpoint && token) return;
+ if(!process.stdin.isTTY)throw Error('Pass --endpoint and --token, or set KARIS_RELAY_URL and KARIS_AGENT_TOKEN');
+ const rl=createInterface({input:process.stdin,output:process.stdout});
+ try{
+  if(!endpoint) endpoint=(await rl.question('Your private MCP endpoint (https://.../mcp): ')).trim();
+  if(!token) token=(await rl.question('Device pairing key (from your self-host server): ')).trim();
+ }finally{rl.close();}
+}
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
+export async function runAgent(){
+ if(args.includes('--help') || args.includes('-h')) {
+  console.log('Karis Desktop Commander self-host remote agent');
+  console.log('Usage: desktop-commander remote [--endpoint https://your-host/mcp]');
+  console.log('Enter your endpoint and pairing key on first launch; later invocations reuse saved credentials.');
+  console.log('Options: --endpoint URL, --no-save, --help');
+  return;
+ }
+ await prompt();
+ const uri=new URL(endpoint);
+ if(uri.protocol!=='https:'&&!(uri.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(uri.hostname)))throw Error('Remote endpoint must use HTTPS');
+ if(!uri.pathname.endsWith('/mcp')&&!uri.pathname.endsWith('/agent')) throw Error('Endpoint must end in /mcp or /agent');
+ uri.pathname='/agent';uri.protocol=uri.protocol==='https:'?'wss:':'ws:';uri.search='';uri.hash='';
+ if(!token||token.length<32)throw Error('Invalid pairing key');
+ if(!process.env.KARIS_AGENT_TOKEN && !flag('--token') && !args.includes('--no-save')) {
+  fs.mkdirSync(configDir,{recursive:true,mode:0o700});
+  fs.writeFileSync(configFile,JSON.stringify({endpoint,token}),{mode:0o600});
+ }
+ const entry=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','index.js');
+ if(!fs.existsSync(entry))throw Error(`Missing compiled MCP CLI: ${entry}`);
+ const childHome=process.env.KARIS_MCP_HOME||path.join(configDir,'runtime-home');fs.mkdirSync(childHome,{recursive:true,mode:0o700});
+ const transport=new StdioClientTransport({command:process.execPath,args:[entry,'--no-onboarding'],cwd:process.cwd(),env:{...process.env,HOME:childHome,DESKTOP_COMMANDER_DISABLE_TELEMETRY:'1',KARIS_DISABLE_TOOL_HISTORY:'1'},stderr:'pipe'});
+ const client=new Client({name:'karis-private-agent',version:'0.1.0'},{capabilities:{}});
+ await client.connect(transport);
+ const {tools}=await client.listTools();console.log(`Local MCP ready: ${tools.length} tools`);
+ let stopped=false, live=null;
+ const end=async()=>{stopped=true;if(live)live.close();await client.close().catch(()=>{});};
+ process.once('SIGINT',()=>void end());process.once('SIGTERM',()=>void end());
+ let attempt=0;
+ while(!stopped){
+  try{
+   const socket=new WebSocket(uri.href,{headers:{Authorization:`Bearer ${token}`},handshakeTimeout:10000,maxPayload:2*1024*1024});live=socket;
+   await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);socket.once('unexpected-response',(_,res)=>reject(new Error(`WS HTTP ${res.statusCode}`)));});
+   attempt=0;console.log(`Connected to private relay: ${uri.origin}`);
+   socket.send(JSON.stringify({kind:'tools',tools}));
+   await new Promise(resolve=>{
+    socket.on('message',async raw=>{let data;try{data=JSON.parse(raw.toString())}catch{return;}
+     if(data.kind!=='call'||!data.id)return;
+     try{const result=await client.callTool({name:data.args.name,arguments:data.args.arguments||{}},undefined,{timeout:48000});if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result}));}
+     catch(e){if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,error:e?.message||'Tool failed'}));}
+    });
+    socket.once('close',resolve);socket.once('error',resolve);
+   });
+  }catch(e){console.error(`Relay connection error: ${e?.message||e}`);}
+  live=null;if(stopped)break;
+  await pause(Math.min(30000,Math.round(1200*Math.pow(1.5,Math.min(++attempt,7)))));
+ }
+ await client.close().catch(()=>{});
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) runAgent().catch(e=>{console.error(e.message);process.exitCode=1});

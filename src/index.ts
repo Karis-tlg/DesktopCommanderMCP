@@ -39,7 +39,10 @@ async function runServer() {
 
     // Check if first argument is "remote"
     if (process.argv[2] === 'remote') {
-      await runRemote();
+      // Karis fork: connect only to a user-owned relay; never silently use vendor service.
+      const agentModule: string = './selfhost/agent.mjs';
+      const { runAgent } = await import(agentModule);
+      await runAgent();
       return;
     }
 

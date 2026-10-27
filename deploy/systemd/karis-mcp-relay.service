@@ -1,0 +1,19 @@
+[Unit]
+Description=Karis self-hosted private MCP OAuth relay
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/workspace/projects/desktop-commander-selfhost/source
+EnvironmentFile=/home/ubuntu/workspace/projects/desktop-commander-selfhost/runtime/private/relay.env
+ExecStart=/home/ubuntu/.nvm/versions/node/v22.23.3/bin/node selfhost/relay.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+LimitNOFILE=8192
+[Install]
+WantedBy=multi-user.target

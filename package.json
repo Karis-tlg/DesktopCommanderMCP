@@ -1,6 +1,6 @@
 {
   "name": "@karis-tlg/desktop-commander",
-  "version": "0.3.1-karis.0",
+  "version": "0.3.1-karis.1",
   "description": "Self-host-ready privacy-oriented fork of Desktop Commander MCP",
   "mcpName": "io.github.wonderwhy-er/desktop-commander",
   "license": "MIT",
@@ -27,7 +27,6 @@
     "vendor/telemetry-contract"
   ],
   "scripts": {
-    "postinstall": "node dist/npm-scripts/verify-ripgrep.js || node -e \"process.exit(0)\"",
     "open-chat": "open -n /Applications/Claude.app",
     "device:install": "cd src/remote-device && npm install",
     "device:start": "tsx src/remote-device/device.ts",
@@ -36,7 +35,7 @@
     "bump": "node scripts/sync-version.js --bump",
     "bump:minor": "node scripts/sync-version.js --bump --minor",
     "bump:major": "node scripts/sync-version.js --bump --major",
-    "build": "tsc && shx cp setup-claude-server.js uninstall-claude-server.js track-installation.js dist/ && shx chmod +x dist/*.js && shx mkdir -p dist/data && shx cp src/data/onboarding-prompts.json dist/data/ && shx mkdir -p dist/remote-device/scripts && shx cp src/remote-device/scripts/blocking-offline-update.js dist/remote-device/scripts/ && node scripts/build-ui-runtime.cjs",
+    "build": "tsc && shx cp setup-claude-server.js uninstall-claude-server.js track-installation.js dist/ && shx chmod +x dist/*.js && shx mkdir -p dist/data && shx cp src/data/onboarding-prompts.json dist/data/ && shx mkdir -p dist/remote-device/scripts && shx cp src/remote-device/scripts/blocking-offline-update.js dist/remote-device/scripts/ && node scripts/build-ui-runtime.cjs && shx mkdir -p dist/selfhost && shx cp selfhost/agent.mjs dist/selfhost/agent.mjs",
     "watch": "tsc --watch",
     "start": "node dist/index.js",
     "start:debug": "node --inspect-brk=9229 dist/index.js",
@@ -123,7 +122,8 @@
     "unified": "^11.0.5",
     "unpdf": "~1.8.1",
     "zod": "^3.24.1",
-    "zod-to-json-schema": "^3.23.5"
+    "zod-to-json-schema": "^3.23.5",
+    "express": "^5.1.0"
   },
   "bundleDependencies": [
     "@desktop-commander/telemetry-contract"
