@@ -17,20 +17,20 @@ let endpoint=flag('--endpoint')||process.env.KARIS_RELAY_URL||conf.endpoint;
 let token=flag('--token')||process.env.KARIS_AGENT_TOKEN||conf.token;
 let displayName=flag('--name')||process.env.KARIS_AGENT_DEVICE_NAME||conf.name||(process.platform==='win32'?'windows':'device');
 async function prompt(){
- if(endpoint && (token || /^\/mcp\/[A-Za-z0-9_-]{40,}$/.test(new URL(endpoint).pathname))) return;
+ if(endpoint && (token || /^\/(?:pair|mcp)\/[A-Za-z0-9_-]{40,}$/.test(new URL(endpoint).pathname))) return;
  if(!process.stdin.isTTY)throw Error('Pass --endpoint and --token, or set KARIS_RELAY_URL and KARIS_AGENT_TOKEN');
  const rl=createInterface({input:process.stdin,output:process.stdout});
  try{
-  if(!endpoint) endpoint=(await rl.question('Paste your private MCP link (https://.../mcp/SECRET): ')).trim();
-  if(!token && !/^\/mcp\/[A-Za-z0-9_-]{40,}$/.test(new URL(endpoint).pathname)) token=(await rl.question('Legacy pairing key: ')).trim();
+  if(!endpoint) endpoint=(await rl.question('Paste your private device pairing URL (https://.../pair/SECRET): ')).trim();
+  if(!token && !/^\/(?:pair|mcp)\/[A-Za-z0-9_-]{40,}$/.test(new URL(endpoint).pathname)) token=(await rl.question('Legacy pairing key: ')).trim();
  }finally{rl.close();}
 }
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 export async function runAgent(){
  if(args.includes('--help') || args.includes('-h')) {
   console.log('Karis Desktop Commander self-host remote agent');
-  console.log('Usage: desktop-commander remote [--endpoint https://host/mcp/SECRET] [--name windows]');
-  console.log('Paste your private MCP link once; no additional pairing key or login.');
+  console.log('Usage: desktop-commander remote --endpoint https://host/pair/SECRET [--name windows]');
+  console.log('Paste the one-time device pairing URL from the self-host dashboard.');
   console.log('Options: --endpoint URL, --name DEVICE_NAME, --no-save, --help');
   return;
  }
@@ -38,14 +38,20 @@ export async function runAgent(){
  const uri=new URL(endpoint);
  if(uri.protocol!=='https:'&&!(uri.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(uri.hostname)))throw Error('Remote endpoint must use HTTPS');
  if(uri.search||uri.hash||uri.username||uri.password)throw Error('Endpoint must not contain query, fragment or credentials');
- const secretMatch=uri.pathname.match(/^\/mcp\/([A-Za-z0-9_-]{40,})$/);
+ const secretMatch=uri.pathname.match(/^\/(?:pair|mcp)\/([A-Za-z0-9_-]{40,})$/);
  if(secretMatch){
   if(!process.env.KARIS_AGENT_TOKEN) token=secretMatch[1];
- } else if(uri.pathname!=='/mcp'&&uri.pathname!=='/agent') throw Error('Endpoint must end with /mcp or /mcp/SECRET');
+ } else if(uri.pathname!=='/mcp'&&uri.pathname!=='/agent') throw Error('Endpoint must end with /mcp or /pair/SECRET');
  uri.pathname='/agent';uri.protocol=uri.protocol==='https:'?'wss:':'ws:';
  if(!token||token.length<32)throw Error('Invalid pairing key');
  fs.mkdirSync(configDir,{recursive:true,mode:0o700});
- const deviceId=conf.deviceId||randomUUID();
+ // Persist device identity even for systemd --no-save service configuration.
+ // The pairing credential still remains only in the private environment file.
+ const deviceIdFile=path.join(configDir,'device-id');
+ const storedId=fs.existsSync(deviceIdFile)?fs.readFileSync(deviceIdFile,'utf8').trim():null;
+ const deviceId=conf.deviceId||storedId||randomUUID();
+ if(!/^[a-zA-Z0-9_-]{8,80}$/.test(deviceId))throw Error('Invalid saved device identity');
+ if(!storedId)fs.writeFileSync(deviceIdFile,deviceId+'\n',{mode:0o600,flag:'wx'});
  displayName=String(displayName).toLowerCase().replace(/[^a-z0-9_-]/g,'_').slice(0,32)||'device';
  if(!args.includes('--no-save')&&!process.env.KARIS_AGENT_TOKEN){
   fs.writeFileSync(configFile,JSON.stringify({endpoint,token,deviceId,name:displayName}),{mode:0o600});
@@ -66,10 +72,20 @@ export async function runAgent(){
    const socket=new WebSocket(uri.href,{headers:{Authorization:`Bearer ${token}`},handshakeTimeout:10000,maxPayload:2*1024*1024});live=socket;
    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);socket.once('unexpected-response',(_,res)=>reject(new Error(`WS HTTP ${res.statusCode}`)));});
    attempt=0;console.log(`Connected to private relay: ${uri.origin}`);
-   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools}));
+   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.0'}));
    await new Promise(resolve=>{
     socket.on('message',async raw=>{let data;try{data=JSON.parse(raw.toString())}catch{return;}
-     if(data.kind!=='call'||!data.id)return;
+     if(!data.id)return;
+     if(data.kind==='ping'){
+      if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result:{content:[{type:'text',text:JSON.stringify({ok:true,name:displayName,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.0',uptimeSeconds:Math.floor(process.uptime())})}]}}));
+      return;
+     }
+     if(data.kind==='shutdown'){
+      if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result:{content:[{type:'text',text:'Device agent is shutting down.'}]}}));
+      setTimeout(()=>{void end();},75);
+      return;
+     }
+     if(data.kind!=='call')return;
      try{const result=await client.callTool({name:data.args.name,arguments:data.args.arguments||{}},undefined,{timeout:48000});if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result}));}
      catch(e){if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,error:e?.message||'Tool failed'}));}
     });

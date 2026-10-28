@@ -1,47 +1,297 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import net from 'node:net';
+import { spawn } from 'node:child_process';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-const root='http://127.0.0.1:18791';
-const secret=fs.readFileSync(process.env.KARIS_TEST_LINK_KEY_FILE||'../runtime/private/link.key','utf8').trim();
-const mock=new WebSocket(`${root.replace('http:','ws:')}/agent`,{headers:{Authorization:`Bearer ${secret}`}});
-const client=new Client({name:'two-device-smoke',version:'1.0.0'},{capabilities:{}});
-let connected=false;
-try{
- await new Promise((resolve,reject)=>{mock.once('open',resolve);mock.once('error',reject);});
- mock.send(JSON.stringify({kind:'register',deviceId:'mockwindows0001',name:'windows',tools:[
-  {name:'ping',description:'Harmless mock Windows device test',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true}},
-  {name:'get_config',description:'Mock Windows configuration',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true}}
- ]}));
- mock.on('message', raw=>{let msg;try{msg=JSON.parse(String(raw))}catch{return;}
-  if(msg.kind==='call')mock.send(JSON.stringify({kind:'response',id:msg.id,result:{content:[{type:'text',text:`from mock windows: ${msg.args.name}`}],isError:false}}));
- });
- const transport=new StreamableHTTPClientTransport(new URL(`${root}/mcp/${secret}`));
- await client.connect(transport);connected=true;
- let tools=[];
- for(let i=0;i<20;i++){
-  tools=(await client.listTools()).tools;
-  if(tools.some(t=>t.name==='windows__ping'))break;
-  await new Promise(r=>setTimeout(r,100));
- }
- assert(tools.some(t=>t.name==='windows__ping'),'Windows agent tools missing');
- assert(tools.some(t=>t.name==='vps__get_config'),'VPS scoped tools missing');
- assert(tools.some(t=>t.name==='get_config'),'Legacy VPS aliases missing');
- const win=await client.callTool({name:'windows__ping',arguments:{}});
- assert.match(win.content[0].text,/from mock windows: ping/);
- const legacy=await client.callTool({name:'get_config',arguments:{}});
- assert(!legacy.isError,'VPS tool unavailable after mock Windows agent connected');
- const explicitVps=await client.callTool({name:'vps__get_config',arguments:{}});
- assert(!explicitVps.isError,'VPS scoped route is unavailable');
- const health=await (await fetch(`${root}/healthz`)).json();
- assert.equal(health.connectedDevices,2);
- console.log(`PASS: two active agents, ${tools.length} distinct exposed tools, windows__ping routed to mock, VPS legacy and vps__ routing intact.`);
-} finally {if(connected)await client.close().catch(()=>{}); mock.close();}
-for(let i=0;i<20;i++){
- const h=await (await fetch(`${root}/healthz`)).json();
- if(h.connectedDevices===1){console.log('PASS: mock agent disconnected cleanly; VPS agent remains online');process.exit(0)}
- await new Promise(r=>setTimeout(r,100));
+const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const relayFile = path.join(sourceRoot, 'selfhost', 'relay.mjs');
+const tempRoot = '/home/ubuntu/workspace/temp/desktop-commander-selfhost';
+fs.mkdirSync(tempRoot, { recursive: true, mode: 0o700 });
+const testDir = fs.mkdtempSync(path.join(tempRoot, 'multi-device-'));
+const randomSecret = () => randomBytes(36).toString('base64url');
+const adminKey = randomSecret(), agentKey = randomSecret(), linkKey = randomSecret();
+for (const [name, value] of [['admin.key', adminKey], ['agent.key', agentKey], ['link.key', linkKey]]) {
+  fs.writeFileSync(path.join(testDir, name), value + '\n', { mode: 0o600, flag: 'wx' });
 }
-throw Error('Mock agent did not deregister in time');
+const freePort = async () => {
+  const s = net.createServer();
+  await new Promise((resolve, reject) => { s.once('error', reject); s.listen(0, '127.0.0.1', resolve); });
+  const p = s.address().port;
+  await new Promise(resolve => s.close(resolve));
+  return p;
+};
+const port = await freePort();
+const root = 'http://127.0.0.1:' + port;
+const relayLog = fs.createWriteStream(path.join(testDir, 'relay.log'), { flags: 'wx', mode: 0o600 });
+const child = spawn(process.execPath, [relayFile], {
+  cwd: sourceRoot,
+  env: {
+    ...process.env,
+    KARIS_BIND: '127.0.0.1',
+    KARIS_PORT: String(port),
+    KARIS_PUBLIC_URL: root,
+    KARIS_DB_FILE: path.join(testDir, 'oauth.json'),
+    KARIS_ADMIN_FILE: path.join(testDir, 'admin.key'),
+    KARIS_AGENT_FILE: path.join(testDir, 'agent.key'),
+    KARIS_LINK_KEY_FILE: path.join(testDir, 'link.key'),
+    KARIS_VERSION: '0.3.4-karis.0',
+    KARIS_AGENT_PACKAGE_URL: 'https://example.invalid/test-agent.tgz'
+  },
+  stdio: ['ignore', 'pipe', 'pipe']
+});
+child.stdout.pipe(relayLog);
+child.stderr.pipe(relayLog);
+const mocks = [];
+let realAgent = null;
+let client = null;
+let clientConnected = false;
+let cookie = '';
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitForHealth() {
+  const start = Date.now();
+  while (Date.now() - start < 12000) {
+    if (child.exitCode !== null) throw new Error('Test relay exited. Log: ' + fs.readFileSync(path.join(testDir, 'relay.log'), 'utf8'));
+    try {
+      const r = await fetch(root + '/healthz');
+      if (r.ok) return await r.json();
+    } catch {}
+    await wait(100);
+  }
+  throw new Error('Test relay did not start. Log: ' + fs.readFileSync(path.join(testDir, 'relay.log'), 'utf8'));
+}
+async function addDevice(displayName, alias) {
+  const r = await fetch(root + '/dashboard/devices/new', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: root, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ displayName, alias }),
+    redirect: 'manual'
+  });
+  assert.equal(r.status, 303, 'create device must redirect');
+  const page = await fetch(root + '/dashboard', { headers: { Cookie: cookie } });
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  const match = html.match(/\/pair\/([A-Za-z0-9_-]{40,})/);
+  assert(match, 'dashboard should show one-time pairing link');
+  return match[1];
+}
+async function mockAgent(token, label) {
+  const ws = new WebSocket(root.replace('http:', 'ws:') + '/agent', { headers: { Authorization: 'Bearer ' + token } });
+  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
+  ws.on('error', () => {});
+  ws.on('message', raw => {
+    let msg;
+    try { msg = JSON.parse(raw.toString()); } catch { return; }
+    if (!msg.id) return;
+    if (msg.kind === 'ping') {
+      ws.send(JSON.stringify({ kind: 'response', id: msg.id, result: { content: [{ type: 'text', text: 'pong:' + label }] } }));
+      return;
+    }
+    if (msg.kind === 'shutdown') {
+      ws.send(JSON.stringify({ kind: 'response', id: msg.id, result: { content: [{ type: 'text', text: 'shutdown:' + label }] } }));
+      setTimeout(() => ws.close(1000, 'test shutdown'), 30);
+      return;
+    }
+    if (msg.kind === 'call') {
+      const value = msg.args?.arguments?.value || '';
+      ws.send(JSON.stringify({ kind: 'response', id: msg.id, result: { content: [{ type: 'text', text: label + ':' + value }] } }));
+    }
+  });
+  ws.send(JSON.stringify({
+    kind: 'register', deviceId: randomUUID(), name: 'untrusted-name',
+    platform: label.startsWith('pc') ? 'win32' : 'darwin',
+    agentVersion: 'test',
+    tools: [{
+      name: 'probe', description: 'Harmless multi-device routing probe.',
+      inputSchema: { type: 'object', properties: { value: { type: 'string' } }, additionalProperties: false },
+      annotations: { title: 'Probe', readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    }]
+  }));
+  mocks.push(ws);
+  return ws;
+}
+async function oauthClient() {
+  const meta = await (await fetch(root + '/.well-known/oauth-authorization-server')).json();
+  const reg = await fetch(root + '/register', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_name: 'Karis multi-device E2E',
+      redirect_uris: ['http://127.0.0.1:18799/callback'],
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code']
+    })
+  });
+  const rc = await reg.json();
+  assert.equal(reg.status, 201, JSON.stringify(rc));
+  const verifier = randomBytes(36).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const auth = new URL(meta.authorization_endpoint);
+  for (const [k, v] of Object.entries({
+    client_id: rc.client_id, redirect_uri: 'http://127.0.0.1:18799/callback',
+    response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256',
+    state: 'multi-device-test', scope: 'mcp', resource: root + '/mcp'
+  })) auth.searchParams.set(k, v);
+  const page = await fetch(auth);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  const requestId = html.match(/name="request" value="([^"]+)"/)?.[1];
+  assert(requestId);
+  const approved = await fetch(root + '/approve', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ request: requestId, password: adminKey }), redirect: 'manual'
+  });
+  assert.equal(approved.status, 302);
+  const callback = new URL(approved.headers.get('location'));
+  assert.equal(callback.searchParams.get('state'), 'multi-device-test');
+  const tokenRes = await fetch(meta.token_endpoint, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code', client_id: rc.client_id,
+      code: callback.searchParams.get('code'), code_verifier: verifier,
+      redirect_uri: 'http://127.0.0.1:18799/callback', resource: root + '/mcp'
+    })
+  });
+  const token = await tokenRes.json();
+  assert.equal(tokenRes.status, 200, JSON.stringify(token));
+  return token.access_token;
+}
+
+try {
+  const health = await waitForHealth();
+  assert.equal(health.quota, 'none');
+  const unauth = await fetch(root + '/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(unauth.status, 401);
+  const login = await fetch(root + '/dashboard/login', {
+    method: 'POST', headers: { Origin: root, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ password: adminKey }), redirect: 'manual'
+  });
+  assert.equal(login.status, 303);
+  cookie = login.headers.get('set-cookie').split(';')[0];
+  const page = await fetch(root + '/dashboard', { headers: { Cookie: cookie } });
+  assert.equal(page.status, 200);
+
+  const pcOneToken = await addDevice('Kha Windows PC', 'pc_one');
+  const pcTwoToken = await addDevice('Office Windows', 'pc_two');
+  const macToken = await addDevice('Kha MacBook', 'macbook');
+  const realAgentToken = await addDevice('Local Linux Agent', 'local_agent');
+  const db = JSON.parse(fs.readFileSync(path.join(testDir, 'oauth.json'), 'utf8'));
+  for (const token of [pcOneToken, pcTwoToken, macToken, realAgentToken]) assert(!JSON.stringify(db).includes(token), 'pairing tokens must not be stored in plaintext');
+
+  await mockAgent(pcOneToken, 'pc_one');
+  await mockAgent(pcTwoToken, 'pc_two');
+  await mockAgent(macToken, 'macbook');
+  const agentConfigDir = path.join(testDir, 'real-agent-config');
+  const agentHome = path.join(testDir, 'real-agent-home');
+  realAgent = spawn(process.execPath, [path.join(sourceRoot, 'dist', 'index.js'), 'remote', '--endpoint', root + '/pair/' + realAgentToken, '--name', 'local_agent', '--no-save'], {
+    cwd: sourceRoot,
+    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.0' },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  realAgent.stdout.pipe(relayLog);
+  realAgent.stderr.pipe(relayLog);
+  const agentWaitStart = Date.now();
+  while (Date.now() - agentWaitStart < 12000) {
+    const h = await (await fetch(root + '/healthz')).json();
+    if (h.connectedDevices >= 4) break;
+    if (realAgent.exitCode !== null) throw new Error('Real agent exited before pairing. Log: ' + fs.readFileSync(path.join(testDir, 'relay.log'), 'utf8'));
+    await wait(100);
+  }
+  assert((await (await fetch(root + '/healthz')).json()).connectedDevices >= 4, 'real Desktop Commander agent should connect');
+
+  const accessToken = await oauthClient();
+  client = new Client({ name: 'karis-multi-device-test', version: '1.0.0' }, { capabilities: {} });
+  const transport = new StreamableHTTPClientTransport(new URL(root + '/mcp'), { requestInit: { headers: { Authorization: 'Bearer ' + accessToken } } });
+  await client.connect(transport); clientConnected = true;
+  const list = await client.listTools();
+  assert(list.tools.some(t => t.name === 'probe'), 'device tools should be merged by name');
+  assert(list.tools.some(t => t.name === 'get_config'), 'full local Desktop Commander tools should be exposed');
+  assert(list.tools.some(t => t.name === 'list_paired_devices'));
+  assert(list.tools.find(t => t.name === 'probe').inputSchema.properties.target_device.enum.includes('pc_one'));
+  assert(list.tools.find(t => t.name === 'probe').inputSchema.properties.target_device.enum.includes('pc_two'));
+  assert(list.tools.find(t => t.name === 'probe').inputSchema.properties.target_device.enum.includes('macbook'));
+  assert(list.tools.find(t => t.name === 'get_config').inputSchema.properties.target_device.enum.includes('local_agent'));
+
+  for (const alias of ['pc_one', 'pc_two', 'macbook']) {
+    const result = await client.callTool({ name: 'probe', arguments: { target_device: alias, value: 'ok' } });
+    assert(!result.isError, JSON.stringify(result));
+    assert.equal(result.content[0].text, alias + ':ok');
+  }
+  const realTool = await client.callTool({ name: 'get_config', arguments: { target_device: 'local_agent' } });
+  assert(!realTool.isError, 'real local Desktop Commander tool should execute through the relay: ' + JSON.stringify(realTool));
+  const deviceListResult = await client.callTool({ name: 'list_paired_devices', arguments: {} });
+  const deviceList = JSON.parse(deviceListResult.content[0].text);
+  assert.equal(deviceList.length, 4);
+  assert(deviceList.every(d => d.online));
+
+  const ping = await client.callTool({ name: 'ping_device', arguments: { device_id: 'pc_two' } });
+  assert(!ping.isError, JSON.stringify(ping));
+  assert(ping.content[0].text.includes('"responsive": true'));
+
+  const activity = await client.callTool({ name: 'get_recent_tool_activity', arguments: { limit: 10 } });
+  const recent = JSON.parse(activity.content[0].text);
+  assert(recent.some(a => a.tool === 'probe' && a.device === 'macbook'));
+  assert(recent.some(a => a.tool === 'ping_device' && a.device === 'pc_two'));
+  const usage = await client.callTool({ name: 'get_usage_statistics', arguments: {} });
+  const stats = JSON.parse(usage.content[0].text);
+  assert.equal(stats.quota, 'none');
+  assert(stats.totalToolCalls >= 4);
+  const dashboardAfterCalls = await (await fetch(root + '/dashboard', { headers: { Cookie: cookie } })).text();
+  assert(dashboardAfterCalls.includes('Usage and recent activity'));
+  assert(dashboardAfterCalls.includes('probe'));
+
+  const revoke = await fetch(root + '/dashboard/devices/' + encodeURIComponent(deviceList.find(d => d.alias === 'pc_two').id) + '/revoke', {
+    method: 'POST', headers: { Cookie: cookie, Origin: root }, redirect: 'manual'
+  });
+  assert.equal(revoke.status, 303);
+  const denied = new WebSocket(root.replace('http:', 'ws:') + '/agent', { headers: { Authorization: 'Bearer ' + pcTwoToken } });
+  const deniedStatus = await new Promise(resolve => {
+    denied.once('unexpected-response', (_req, response) => resolve(response.statusCode));
+    denied.once('open', () => { denied.close(); resolve(101); });
+    denied.once('error', () => resolve(0));
+  });
+  assert.equal(deniedStatus, 401, 'revoked device token must no longer pair');
+
+  const afterRevoke = await client.callTool({ name: 'list_paired_devices', arguments: {} });
+  const active = JSON.parse(afterRevoke.content[0].text);
+  assert.equal(active.length, 3);
+  assert(!active.some(d => d.alias === 'pc_two'));
+
+  const shutdown = await client.callTool({ name: 'shutdown_device_agent', arguments: { device_id: 'macbook' } });
+  assert(!shutdown.isError, JSON.stringify(shutdown));
+  assert(shutdown.content[0].text.includes('shutdown:macbook'));
+  const shutdownReal = await client.callTool({ name: 'shutdown_device_agent', arguments: { device_id: 'local_agent' } });
+  assert(!shutdownReal.isError, JSON.stringify(shutdownReal));
+  await wait(200);
+
+  const revokeAll = await fetch(root + '/dashboard/devices/revoke-all', {
+    method: 'POST', headers: { Cookie: cookie, Origin: root, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ confirm: 'yes' }), redirect: 'manual'
+  });
+  assert.equal(revokeAll.status, 303);
+  const empty = await client.callTool({ name: 'list_paired_devices', arguments: {} });
+  assert.equal(JSON.parse(empty.content[0].text).length, 0);
+
+  console.log('PASS: dashboard pairing links for 4 devices including the real Desktop Commander agent; OAuth MCP; core tool routing via target_device; usage/activity; ping/shutdown; individual revoke and revoke-all; no monthly quota.');
+} finally {
+  if (clientConnected) await client.close().catch(() => {});
+  if (realAgent && realAgent.exitCode === null) {
+    realAgent.kill('SIGTERM');
+    await Promise.race([new Promise(resolve => realAgent.once('exit', resolve)), wait(4000)]);
+    if (realAgent.exitCode === null) realAgent.kill('SIGKILL');
+  }
+  for (const ws of mocks) { try { ws.close(1000, 'test cleanup'); } catch {} }
+  await wait(150);
+  if (child.exitCode === null) {
+    child.kill('SIGTERM');
+    await Promise.race([new Promise(resolve => child.once('exit', resolve)), wait(4000)]);
+    if (child.exitCode === null) child.kill('SIGKILL');
+  }
+  relayLog.end();
+  fs.rmSync(testDir, { recursive: true, force: true });
+}

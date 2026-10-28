@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-private="$root/runtime/private"
-key_file="$private/link.key"
-env_file="$private/relay.env"
-if [[ ! -r "$key_file" || ! -r "$env_file" ]]; then
-  echo 'Missing private link key or relay configuration.' >&2
+env_file="$root/runtime/private/relay.env"
+if [[ ! -r "$env_file" ]]; then
+  echo 'Missing private relay configuration.' >&2
   exit 1
 fi
 origin="$(sed -n 's/^KARIS_PUBLIC_URL=//p' "$env_file" | head -n1)"
-key="$(cat "$key_file")"
-if [[ "$origin" != https://* || ${#key} -lt 40 ]]; then
-  echo 'Invalid public origin or link key.' >&2
+if [[ "$origin" != https://* && "$origin" != http://127.0.0.1* ]]; then
+  echo 'Expected an HTTPS public origin or loopback-only local endpoint.' >&2
   exit 1
 fi
-printf '%s/mcp/%s\n' "${origin%/}" "$key"
+printf '%s/mcp\n' "${origin%/}"
+echo 'Connect the MCP client using OAuth. Use the dashboard to manage authorized clients and device pairing.' >&2

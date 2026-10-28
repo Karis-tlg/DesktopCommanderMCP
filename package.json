@@ -1,6 +1,6 @@
 {
   "name": "@karis-tlg/desktop-commander",
-  "version": "0.3.3-karis.0",
+  "version": "0.3.4-karis.0",
   "description": "Self-host-ready privacy-oriented fork of Desktop Commander MCP",
   "mcpName": "io.github.wonderwhy-er/desktop-commander",
   "license": "MIT",
@@ -104,6 +104,7 @@
     "@vscode/ripgrep": "^1.15.9",
     "cross-fetch": "^4.1.0",
     "exceljs": "^4.4.0",
+    "express": "^5.1.0",
     "fastest-levenshtein": "^1.0.16",
     "glob": "^10.3.10",
     "highlight.js": "^11.11.1",
@@ -122,8 +123,7 @@
     "unified": "^11.0.5",
     "unpdf": "~1.8.1",
     "zod": "^3.24.1",
-    "zod-to-json-schema": "^3.23.5",
-    "express": "^5.1.0"
+    "zod-to-json-schema": "^3.23.5"
   },
   "bundleDependencies": [
     "@desktop-commander/telemetry-contract"
