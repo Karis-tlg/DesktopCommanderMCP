@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 
 const args=process.argv.slice(2);
 const flag = name => {const ix=args.indexOf(name);return ix>=0?args[ix+1]:undefined};
@@ -14,33 +15,40 @@ const configFile=path.join(configDir,'config.json');
 const conf=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8')):{};
 let endpoint=flag('--endpoint')||process.env.KARIS_RELAY_URL||conf.endpoint;
 let token=flag('--token')||process.env.KARIS_AGENT_TOKEN||conf.token;
+let displayName=flag('--name')||process.env.KARIS_AGENT_DEVICE_NAME||conf.name||(process.platform==='win32'?'windows':'device');
 async function prompt(){
- if(endpoint && token) return;
+ if(endpoint && (token || /^\/mcp\/[A-Za-z0-9_-]{40,}$/.test(new URL(endpoint).pathname))) return;
  if(!process.stdin.isTTY)throw Error('Pass --endpoint and --token, or set KARIS_RELAY_URL and KARIS_AGENT_TOKEN');
  const rl=createInterface({input:process.stdin,output:process.stdout});
  try{
-  if(!endpoint) endpoint=(await rl.question('Your private MCP endpoint (https://.../mcp): ')).trim();
-  if(!token) token=(await rl.question('Device pairing key (from your self-host server): ')).trim();
+  if(!endpoint) endpoint=(await rl.question('Paste your private MCP link (https://.../mcp/SECRET): ')).trim();
+  if(!token && !/^\/mcp\/[A-Za-z0-9_-]{40,}$/.test(new URL(endpoint).pathname)) token=(await rl.question('Legacy pairing key: ')).trim();
  }finally{rl.close();}
 }
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 export async function runAgent(){
  if(args.includes('--help') || args.includes('-h')) {
   console.log('Karis Desktop Commander self-host remote agent');
-  console.log('Usage: desktop-commander remote [--endpoint https://your-host/mcp]');
-  console.log('Enter your endpoint and pairing key on first launch; later invocations reuse saved credentials.');
-  console.log('Options: --endpoint URL, --no-save, --help');
+  console.log('Usage: desktop-commander remote [--endpoint https://host/mcp/SECRET] [--name windows]');
+  console.log('Paste your private MCP link once; no additional pairing key or login.');
+  console.log('Options: --endpoint URL, --name DEVICE_NAME, --no-save, --help');
   return;
  }
  await prompt();
  const uri=new URL(endpoint);
  if(uri.protocol!=='https:'&&!(uri.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(uri.hostname)))throw Error('Remote endpoint must use HTTPS');
- if(!uri.pathname.endsWith('/mcp')&&!uri.pathname.endsWith('/agent')) throw Error('Endpoint must end in /mcp or /agent');
- uri.pathname='/agent';uri.protocol=uri.protocol==='https:'?'wss:':'ws:';uri.search='';uri.hash='';
+ if(uri.search||uri.hash||uri.username||uri.password)throw Error('Endpoint must not contain query, fragment or credentials');
+ const secretMatch=uri.pathname.match(/^\/mcp\/([A-Za-z0-9_-]{40,})$/);
+ if(secretMatch){
+  if(!process.env.KARIS_AGENT_TOKEN) token=secretMatch[1];
+ } else if(uri.pathname!=='/mcp'&&uri.pathname!=='/agent') throw Error('Endpoint must end with /mcp or /mcp/SECRET');
+ uri.pathname='/agent';uri.protocol=uri.protocol==='https:'?'wss:':'ws:';
  if(!token||token.length<32)throw Error('Invalid pairing key');
- if(!process.env.KARIS_AGENT_TOKEN && !flag('--token') && !args.includes('--no-save')) {
-  fs.mkdirSync(configDir,{recursive:true,mode:0o700});
-  fs.writeFileSync(configFile,JSON.stringify({endpoint,token}),{mode:0o600});
+ fs.mkdirSync(configDir,{recursive:true,mode:0o700});
+ const deviceId=conf.deviceId||randomUUID();
+ displayName=String(displayName).toLowerCase().replace(/[^a-z0-9_-]/g,'_').slice(0,32)||'device';
+ if(!args.includes('--no-save')&&!process.env.KARIS_AGENT_TOKEN){
+  fs.writeFileSync(configFile,JSON.stringify({endpoint,token,deviceId,name:displayName}),{mode:0o600});
  }
  const entry=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','index.js');
  if(!fs.existsSync(entry))throw Error(`Missing compiled MCP CLI: ${entry}`);
@@ -58,7 +66,7 @@ export async function runAgent(){
    const socket=new WebSocket(uri.href,{headers:{Authorization:`Bearer ${token}`},handshakeTimeout:10000,maxPayload:2*1024*1024});live=socket;
    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);socket.once('unexpected-response',(_,res)=>reject(new Error(`WS HTTP ${res.statusCode}`)));});
    attempt=0;console.log(`Connected to private relay: ${uri.origin}`);
-   socket.send(JSON.stringify({kind:'tools',tools}));
+   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools}));
    await new Promise(resolve=>{
     socket.on('message',async raw=>{let data;try{data=JSON.parse(raw.toString())}catch{return;}
      if(data.kind!=='call'||!data.id)return;

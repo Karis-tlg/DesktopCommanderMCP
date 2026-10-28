@@ -22,13 +22,13 @@ This project forks the MIT-licensed `@wonderwhy-er/desktop-commander` local MCP 
 
 ## Install an agent on another Windows / Linux / macOS computer
 
-The fork is not yet published on the npm registry (npm credentials are not configured on this VPS). The GitHub Release offers an npm tarball usable by **one npx command**:
+The fork is not published on npm (npm credentials are not configured on this VPS). The GitHub Release offers an npm tarball usable by **one npx command**:
 
 ```bash
-npx --yes --package=https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/v0.3.2-karis.1/karis-tlg-desktop-commander-0.3.2-karis.1.tgz desktop-commander remote
+npx --yes --package=https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/v0.3.3-karis.0/karis-tlg-desktop-commander-0.3.3-karis.0.tgz desktop-commander remote
 ```
 
-On first launch, paste **your own public HTTPS `/mcp` URL** and the **pairing key** stored in `../runtime/private/agent.key`. The agent stores its own credentials locally under `~/.karis-desktop-commander-agent/config.json` with restrictive permissions. It does **not** connect to `mcp.desktopcommander.app`.
+On Windows, start the command in PowerShell and paste the **same full private MCP URL** you use in ChatGPT (ending `/mcp/<private-link-key>`). No separate pairing key or OAuth login is needed. The agent saves its device identity and link privately under the Windows user profile at `~/.karis-desktop-commander-agent/config.json`. Subsequent runs reuse it. Leave the terminal running to keep the Windows agent online; stop by Ctrl+C. It does **not** connect to `mcp.desktopcommander.app`. **Node.js 22.12+ is required**.
 
 A normal `npx @karis-tlg/desktop-commander@latest remote` requires publishing to npm under a verified, authorized npm account; GitHub fork/release alone cannot reserve the npm scope.
 
@@ -39,6 +39,12 @@ npm ci --ignore-scripts
 npm run build
 node dist/index.js remote --endpoint https://your-host/mcp
 ```
+
+## Two-device operation (VPS + Windows simultaneously)
+
+The relay now tracks connected agents independently. The VPS agent uses alias `vps` and retains its previous unprefixed tools such as `get_config`, and also provides `vps__get_config`, `vps__read_file`, etc. The Windows agent runs with alias `windows` and supplies `windows__get_config`, `windows__read_file`, `windows__start_process`, etc. Tools always route to their named device. On an MCP client that caches tool discovery, reconnect/refresh its tool list after the Windows machine joins. There is no need to install a second relay, disable the VPS service, or use the hosted vendor quota.
+
+**Important:** the single-link secret is an access capability for *both* machines. Whoever knows the URL can access terminal/files on the connected devices, so keep it private and only authorize trusted clients. For a higher security setup, use per-device keys and client-specific OAuth.
 
 ## Add to an MCP client
 

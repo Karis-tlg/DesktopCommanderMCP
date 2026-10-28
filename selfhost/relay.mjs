@@ -105,21 +105,33 @@ app.post('/settings',(req,res)=>{
  const list=Object.values(db.clients).map(c=>`<li><b>${esc(c.client_name||'Unnamed MCP client')}</b><small> · ${esc(c.client_id.slice(0,10))}…</small><form method="post" action="/settings"><input type="hidden" name="client" value="${esc(c.client_id)}"><input type="password" name="password" required autocomplete="off" placeholder="Admin password"><button type="submit" name="action" value="revoke">Revoke this client</button></form></li>`).join('');
  res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Karis MCP Settings</title><style>body{font:16px system-ui;max-width:700px;margin:8vh auto;padding:25px;background:#101820;color:white}li{margin:20px 0}input,button{font:inherit;padding:10px;margin:8px}button{background:#245b6f;color:white;border:0;border-radius:5px}</style><h1>Connected OAuth clients</h1><p>${Object.keys(db.clients).length} clients registered. Revoke removes all of a client's access and refresh tokens.</p><ul>${list}</ul><p><a href="/settings">Back</a></p>`);
 });
-app.get('/healthz',(req,res)=>res.json({ok:true,agent:!!active,transport:'streamable-http',quota:'none'}));
-let active=null,tools=[],waiting=new Map();
-const rpc = (kind,args={},ms=45000) => new Promise((resolve,reject)=>{
- if(!active||active.readyState!==1){reject(new Error('Device offline'));return;}
+const devices=new Map(),waiting=new Map(),toolMap=new Map();
+let tools=[];
+const rebuildTools=()=>{
+ tools=[];toolMap.clear();
+ for(const[id,d] of devices){
+  for(const t of d.tools){
+   const scoped={...t,name:`${d.alias}__${t.name}`,description:`Device: ${d.displayName} (${d.alias}). ${t.description}`};
+   tools.push(scoped);toolMap.set(scoped.name,{id,originalName:t.name});
+   if(d.alias==='vps'){tools.push(t);toolMap.set(t.name,{id,originalName:t.name});}
+  }
+ }
+};
+app.get('/healthz',(_req,res)=>res.json({ok:true,agent:devices.size>0,connectedDevices:devices.size,toolCount:tools.length,transport:'streamable-http',quota:'none'}));
+const rpc=(deviceId,kind,args={},ms=45000)=>new Promise((resolve,reject)=>{
+ const ws=devices.get(deviceId)?.ws;
+ if(!ws||ws.readyState!==1){reject(new Error('Device offline'));return;}
  const id=randomUUID(),timer=setTimeout(()=>{waiting.delete(id);reject(new Error('Device response timeout'));},ms);
- waiting.set(id,{resolve,reject,timer});active.send(JSON.stringify({kind,id,args}),err=>{if(err){clearTimeout(timer);waiting.delete(id);reject(err);}});
+ waiting.set(id,{resolve,reject,timer,ws});ws.send(JSON.stringify({kind,id,args}),err=>{if(err){clearTimeout(timer);waiting.delete(id);reject(err);}});
 });
 const auth=requireBearerAuth({verifier:provider,requiredScopes:['mcp'],resourceMetadataUrl:getOAuthProtectedResourceMetadataUrl(resource),expectedResource:resource});
 const handleMcp = async(req,res)=>{
  const server=new Server({name:'karis-selfhost-mcp',version:'0.1.0'},{capabilities:{tools:{}},instructions:'Private remote device MCP. File and terminal tools execute with the agent operating-system permissions. Use read-only tools for inspection; only run write or shell operations when requested by the user.'});
  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
  server.setRequestHandler(CallToolRequestSchema,async r=>{
-  const name=r.params.name;
-  if(!tools.some(t=>t.name===name))return {isError:true,content:[{type:'text',text:'Unknown tool'}]};
-  try{return await rpc('call',{name,arguments:r.params.arguments||{}},50000)}catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
+  const route=toolMap.get(r.params.name);
+  if(!route)return {isError:true,content:[{type:'text',text:'Unknown or offline device tool'}]};
+  try{return await rpc(route.id,'call',{name:route.originalName,arguments:r.params.arguments||{}},50000)}catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
  });
  const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined});
  try{await server.connect(transport);await transport.handleRequest(req,res,req.body);}catch(e){if(!res.headersSent)res.status(500).json({error:'Internal MCP server error'});}finally{await server.close().catch(()=>{});}
@@ -133,32 +145,45 @@ app.all('/mcp/:linkKey',(req,res)=>{
 });
 const server=createServer(app),wss=new WebSocketServer({noServer:true,maxPayload:2*1024*1024});
 server.on('upgrade',(req,socket,head)=>{
- if(new URL(req.url,'http://localhost').pathname!=='/agent'||!req.headers.authorization?.startsWith('Bearer ')||!equal(req.headers.authorization.slice(7),agentKey)){socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');socket.destroy();return;}
- wss.handleUpgrade(req,socket,head,s=>wss.emit('connection',s));
+ const bearer=req.headers.authorization?.startsWith('Bearer ')?req.headers.authorization.slice(7):'';
+ if(new URL(req.url,'http://localhost').pathname!=='/agent'||!bearer||!(equal(bearer,agentKey)||equal(bearer,linkKey))){socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');socket.destroy();return;}
+ wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws));
 });
+const sanitizeTool=t=>({name:t.name,
+ description:String(t.description||t.name).slice(0,900),
+ inputSchema:t.inputSchema?.type==='object'?t.inputSchema:{type:'object',properties:{}},
+ annotations:{title:String(t.annotations?.title||t.name).slice(0,120),
+  readOnlyHint:t.annotations?.readOnlyHint===true,
+  destructiveHint:t.annotations?.destructiveHint===true,
+  openWorldHint:t.annotations?.openWorldHint===true}
+});
+const sanitizeAlias=name=>String(name||'device').toLowerCase().replace(/[^a-z0-9_]/g,'_').replace(/^_+|_+$/g,'').slice(0,25)||'device';
 wss.on('connection',ws=>{
- if(active)active.close(1000,'Replaced by new agent');active=ws;tools=[];
+ let currentId=null;
  ws.on('message',raw=>{let msg;try{msg=JSON.parse(raw.toString())}catch{return;}
-   if(msg.kind==='tools'&&Array.isArray(msg.tools)){
-     // The upstream local server offers ui:// resources which this relay does not implement.
-     // Publishing those _meta outputTemplates causes clients to discover missing UI resources.
-     // Use compact, ordinary MCP tool descriptors without advertising unavailable widgets.
-     tools=msg.tools.filter(t=>t&&typeof t.name==='string'&&/^[\w.-]+$/.test(t.name)).slice(0,100).map(t=>({
-       name:t.name,
-       description:String(t.description||t.name).slice(0,1000),
-       inputSchema:t.inputSchema?.type==='object'?t.inputSchema:{type:'object',properties:{}},
-       annotations:{
-         title:String(t.annotations?.title||t.name).slice(0,120),
-         readOnlyHint:t.annotations?.readOnlyHint===true,
-         destructiveHint:t.annotations?.destructiveHint===true,
-         openWorldHint:t.annotations?.openWorldHint===true
-       }
-     }));
-     return;
-   }
-   if(msg.kind==='response'){const task=waiting.get(msg.id);if(!task)return;waiting.delete(msg.id);clearTimeout(task.timer);if(msg.error)task.reject(new Error(String(msg.error).slice(0,300)));else task.resolve(msg.result);}
+  if(msg.kind==='register'&&Array.isArray(msg.tools)){
+   const id=String(msg.deviceId||'').slice(0,80);
+   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(id)){ws.close(1008,'Invalid device id');return;}
+   const old=devices.get(id);
+   if(old&&old.ws!==ws)old.ws.close(1000,'Device reconnected');
+   const clean=msg.tools.filter(t=>t&&typeof t.name==='string'&&/^[\w.-]+$/.test(t.name)).slice(0,100).map(sanitizeTool);
+   const base=sanitizeAlias(msg.name);
+   const dupe=[...devices].some(([other,d])=>other!==id&&d.alias===base);
+   const alias=dupe?`${base}_${id.slice(0,6).toLowerCase()}`:base;
+   devices.set(id,{ws,alias,displayName:String(msg.name||alias).slice(0,40),tools:clean});currentId=id;rebuildTools();
+   console.log(`Device connected: ${alias} (${clean.length} tools); total ${devices.size}`);
+   return;
+  }
+  if(msg.kind==='response'){
+   const task=waiting.get(msg.id);if(!task||task.ws!==ws)return;
+   waiting.delete(msg.id);clearTimeout(task.timer);
+   if(msg.error)task.reject(new Error(String(msg.error).slice(0,300)));else task.resolve(msg.result);
+  }
  });
- ws.on('close',()=>{if(active===ws){active=null;tools=[];for(const [id,t]of waiting){clearTimeout(t.timer);t.reject(new Error('Device disconnected'));waiting.delete(id);}}});
+ ws.on('close',()=>{
+  if(currentId&&devices.get(currentId)?.ws===ws){devices.delete(currentId);rebuildTools();}
+  for(const[id,t]of waiting)if(t.ws===ws){clearTimeout(t.timer);t.reject(new Error('Device disconnected'));waiting.delete(id);}
+ });
 });
 const sweep=setInterval(()=>{cleanup();for(const [k,v] of pending) if(v.exp<now())pending.delete(k);for(const [k,v] of failures)if(v.exp<now())failures.delete(k);save();},300000);sweep.unref();
 server.listen(port,bind,()=>console.log(`Karis MCP listening on ${bind}:${port}; public issuer ${issuer.href}; no monthly tool quota`));

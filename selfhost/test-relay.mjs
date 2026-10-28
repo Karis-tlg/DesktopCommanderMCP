@@ -21,7 +21,7 @@ const tokenResponse=await fetch(meta.token_endpoint,{method:'POST',headers:{'Con
 const replay=await fetch(meta.token_endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',client_id:rc.client_id,code,code_verifier:verifier,redirect_uri:'http://127.0.0.1:18799/callback'})});assert.notEqual(replay.status,200);
 const client=new Client({name:'karis-relay-test',version:'1.0.0'},{capabilities:{}});
 const transport=new StreamableHTTPClientTransport(new URL(`${root}/mcp`),{requestInit:{headers:{Authorization:`Bearer ${t.access_token}`}}});
-try{await client.connect(transport);const list=await client.listTools();assert.equal(list.tools.length,25,`expected 25 tools got ${list.tools.length}`);assert(list.tools.find(x=>x.name==='get_config'));
+try{await client.connect(transport);const list=await client.listTools();assert(list.tools.length>=50,`expected VPS namespaced tools plus legacy aliases, got ${list.tools.length}`);assert(list.tools.find(x=>x.name==='get_config'));assert(list.tools.find(x=>x.name==='vps__get_config'));
 const result=await client.callTool({name:'get_config',arguments:{}},undefined,{timeout:20000});assert(!result.isError,'local agent tool should succeed');console.log(`PASS: OAuth PKCE + DCR + Bearer + StreamableHTTP + WS agent + ${list.tools.length} tools + callTool`);
 }finally{await client.close();}
 const initCheck=await fetch(`${root}/mcp/${linkKey}`,{method:'POST',headers:{Accept:'application/json, text/event-stream','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:125,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'generic-http-check',version:'1.0.0'}}})});
@@ -29,7 +29,7 @@ assert.equal(initCheck.status,200);assert.match(initCheck.headers.get('content-t
 console.log('PASS: raw HTTPS initialize returns standard SSE stream');
 const linkClient=new Client({name:'karis-link-only-test',version:'1.0.0'},{capabilities:{}});
 const linkTransport=new StreamableHTTPClientTransport(new URL(`${root}/mcp/${linkKey}`));
-try{await linkClient.connect(linkTransport);const linked=await linkClient.listTools();assert.equal(linked.tools.length,25);
+try{await linkClient.connect(linkTransport);const linked=await linkClient.listTools();assert(linked.tools.length>=50);
 assert(linked.tools.every(t=>!t._meta && t.description?.length<=1000 && ['readOnlyHint','destructiveHint','openWorldHint'].every(k=>typeof t.annotations?.[k]==='boolean')),'Relay must not advertise unsupported UI templates or incomplete annotations');const linkedResult=await linkClient.callTool({name:'get_config',arguments:{}},undefined,{timeout:20000});assert(!linkedResult.isError);console.log(`PASS: link-only endpoint, no OAuth headers/UI, ${linked.tools.length} tools + callTool`);}finally{await linkClient.close();}
 const badLink=await fetch(`${root}/mcp/${'A'.repeat(43)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(badLink.status,404);
 const refresh=await fetch(meta.token_endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:rc.client_id,refresh_token:t.refresh_token,resource:`${root}/mcp`})});const r=await refresh.json();assert.equal(refresh.status,200,JSON.stringify(r));assert(r.access_token);
