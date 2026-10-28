@@ -6,16 +6,17 @@ This project forks the MIT-licensed `@wonderwhy-er/desktop-commander` local MCP 
 
 - VPS relay via `selfhost/relay.mjs`, plus agent via `desktop-commander remote`.
 - MCP Streamable HTTP server, dynamic client registration, OAuth authorization-code + PKCE (S256), per-client bearer/refresh tokens, revocation, RFC 9728 resource metadata, approval password UI, client revocation at `/settings`.
+- A separate **single-link mode** at `/mcp/<random-secret>` lets a client connect without an OAuth pop-up. The secret is embedded in the URL and acts as a bearer credential; anyone who obtains the URL can run the full tool set. Keep it private and rotate it if shared.
 - Agent pairing via separate strong secret (`/agent` WebSocket) and a local MCP child process with file and terminal tools. Both the agent and relay restart with systemd on VPS.
 - No artificial 10,000-tool-calls/month limit in this self-host. Vendor dashboard counters remain separate.
 - Default third-party telemetry, vendor flags and tool-call recording are disabled. Agent child uses separate HOME so existing Desktop Commander settings are not touched.
-- Built and tested with 25 MCP tools, `get_config` over HTTP → WS → local MCP, OAuth/PKCE, refresh rotation and revocation.
+- Built and tested with 25 MCP tools, `get_config` over HTTPS → WS → local MCP, OAuth/PKCE, refresh rotation/revocation, plus a link-only client with no Authorization header.
 
 ## Hosted VPS status
 
 - Relay local URL: `http://127.0.0.1:18791/mcp` (bind 127.0.0.1 only).
-- `karis-mcp-relay.service` and `karis-mcp-agent.service` were deployed, with secrets in `../runtime/private/` (owner-only files; **do not commit**).
-- For external clients an **HTTPS public URL is mandatory**. Tailscale Funnel is not enabled for this tailnet yet. An admin can enable it, then run `deploy/enable-funnel.sh` to map the same localhost port to a stable `https://<device>.<tailnet>.ts.net/mcp` URL. The script refuses to overwrite an existing serve/funnel mapping.
+- `karis-mcp-relay.service` and `karis-mcp-agent.service` are enabled and running; secrets in `../runtime/private/` (owner-only files; **do not commit**).
+- Tailscale Funnel is enabled. Public origin: `https://panel-rs.tail79e063.ts.net`. Standard OAuth endpoint: `/mcp`. Single-link endpoint: `/mcp/<private-link-key>`; the exact key is stored only in `../runtime/private/link.key` and is intentionally not in Git.
 - Tailscale HTTPS exposure is public; protect your admin password, agent pairing key and OAuth tokens. Only approve known clients. Consider client write/shell capabilities extremely privileged.
 
 ## Install an agent on another Windows / Linux / macOS computer
@@ -23,7 +24,7 @@ This project forks the MIT-licensed `@wonderwhy-er/desktop-commander` local MCP 
 The fork is not yet published on the npm registry (npm credentials are not configured on this VPS). The GitHub Release offers an npm tarball usable by **one npx command**:
 
 ```bash
-npx --yes --package=https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/v0.3.1-karis.1/karis-tlg-desktop-commander-0.3.1-karis.1.tgz desktop-commander remote
+npx --yes --package=https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/v0.3.2-karis.1/karis-tlg-desktop-commander-0.3.2-karis.1.tgz desktop-commander remote
 ```
 
 On first launch, paste **your own public HTTPS `/mcp` URL** and the **pairing key** stored in `../runtime/private/agent.key`. The agent stores its own credentials locally under `~/.karis-desktop-commander-agent/config.json` with restrictive permissions. It does **not** connect to `mcp.desktopcommander.app`.
@@ -40,7 +41,9 @@ node dist/index.js remote --endpoint https://your-host/mcp
 
 ## Add to an MCP client
 
-Configure the HTTPS URL `https://YOUR-DOMAIN/mcp` as a **remote MCP server**, using OAuth. On first authorization the server shows an approval page; enter the private admin approval password stored in `../runtime/private/admin.key`. Settings are at `https://YOUR-DOMAIN/settings` (admin approval required to list or revoke clients). Tokens can also be revoked via OAuth `/revoke` endpoint. DCR registration is public, but execution requires your approval.
+**Simplest setup (no OAuth pop-up):** choose `No authentication` in the MCP client and paste the private single-link endpoint `https://panel-rs.tail79e063.ts.net/mcp/<PRIVATE-LINK-KEY>`. The link key is embedded in the URL, so there is no second login step. Keep the URL secret; it grants full terminal/file tools. The key is in `../runtime/private/link.key`; rotate it by replacing that file with a fresh random key, then restart `karis-mcp-relay.service` and update the client URL.
+
+**Alternative:** configure `https://panel-rs.tail79e063.ts.net/mcp` with OAuth. On first authorization the server shows an approval page; enter the private admin approval password stored in `../runtime/private/admin.key`. Settings are at `https://panel-rs.tail79e063.ts.net/settings`; OAuth clients can be revoked there or via `/revoke`.
 
 ## VPS operations
 

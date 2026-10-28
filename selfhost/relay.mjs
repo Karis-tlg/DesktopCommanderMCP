@@ -21,10 +21,11 @@ const port = Number(process.env.KARIS_PORT || 18791);
 const dbPath = process.env.KARIS_DB_FILE;
 const adminFile = process.env.KARIS_ADMIN_FILE;
 const agentFile = process.env.KARIS_AGENT_FILE;
-if (!dbPath || !adminFile || !agentFile) throw Error('Missing private KARIS_DB_FILE, KARIS_ADMIN_FILE, KARIS_AGENT_FILE');
+const linkKeyFile = process.env.KARIS_LINK_KEY_FILE;
+if (!dbPath || !adminFile || !agentFile || !linkKeyFile) throw Error('Missing private relay file configuration');
 const secret = (f) => fs.readFileSync(f,'utf8').trim();
-const adminKey = secret(adminFile), agentKey = secret(agentFile);
-if (adminKey.length < 32 || agentKey.length < 32) throw Error('Generated secrets must be at least 32 chars');
+const adminKey = secret(adminFile), agentKey = secret(agentFile), linkKey = secret(linkKeyFile);
+if (adminKey.length < 32 || agentKey.length < 32 || linkKey.length < 40) throw Error('Generated secrets are missing or too short');
 const random = () => randomBytes(32).toString('base64url');
 const digest = s => createHash('sha256').update(s).digest('hex');
 const equal = (a,b) => { const x=Buffer.from(digest(a),'hex'), y=Buffer.from(digest(b),'hex'); return timingSafeEqual(x,y); };
@@ -76,7 +77,7 @@ const provider = {
  }
 };
 const esc = str => String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const app=express();app.disable('x-powered-by');app.use((req,res,next)=>{res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");next();});
+const app=express();app.disable('x-powered-by');app.use((req,res,next)=>{res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Robots-Tag','noindex, nofollow');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");next();});
 app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:false,limit:'16kb'}));
 app.use(mcpAuthRouter({provider,issuerUrl:issuer,resourceServerUrl:resource,scopesSupported:['mcp'],resourceName:'Karis Desktop Commander MCP'}));
 let failures=new Map();
@@ -112,7 +113,7 @@ const rpc = (kind,args={},ms=45000) => new Promise((resolve,reject)=>{
  waiting.set(id,{resolve,reject,timer});active.send(JSON.stringify({kind,id,args}),err=>{if(err){clearTimeout(timer);waiting.delete(id);reject(err);}});
 });
 const auth=requireBearerAuth({verifier:provider,requiredScopes:['mcp'],resourceMetadataUrl:getOAuthProtectedResourceMetadataUrl(resource),expectedResource:resource});
-app.all('/mcp',auth,async(req,res)=>{
+const handleMcp = async(req,res)=>{
  const server=new Server({name:'karis-selfhost-mcp',version:'0.1.0'},{capabilities:{tools:{}}});
  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
  server.setRequestHandler(CallToolRequestSchema,async r=>{
@@ -122,6 +123,13 @@ app.all('/mcp',auth,async(req,res)=>{
  });
  const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
  try{await server.connect(transport);await transport.handleRequest(req,res,req.body);}catch(e){if(!res.headersSent)res.status(500).json({error:'Internal MCP server error'});}finally{await server.close().catch(()=>{});}
+};
+// Standard endpoint uses OAuth. A separate high-entropy capability URL skips the OAuth UI;
+// anyone holding that exact URL has the same powerful access, so keep it private.
+app.all('/mcp',auth,handleMcp);
+app.all('/mcp/:linkKey',(req,res)=>{
+ if(!equal(req.params.linkKey,linkKey)){res.status(404).send('Not found');return;}
+ return handleMcp(req,res);
 });
 const server=createServer(app),wss=new WebSocketServer({noServer:true,maxPayload:2*1024*1024});
 server.on('upgrade',(req,socket,head)=>{

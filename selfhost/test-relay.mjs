@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 const root=process.env.KARIS_TEST_URL||'http://127.0.0.1:18791';
 const key=fs.readFileSync(process.env.KARIS_TEST_ADMIN_KEY,'utf8').trim();
+const linkKey=fs.readFileSync(process.env.KARIS_TEST_LINK_KEY_FILE||'../runtime/private/link.key','utf8').trim();
 const health=await (await fetch(`${root}/healthz`)).json();assert(health.agent,'agent must be online');
 const unauth=await fetch(`${root}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(unauth.status,401);assert.match(unauth.headers.get('www-authenticate'),/resource_metadata=/);
 const meta=await (await fetch(`${root}/.well-known/oauth-authorization-server`)).json();assert.ok(meta.authorization_endpoint);assert.ok(meta.token_endpoint);assert.ok(meta.registration_endpoint);
@@ -23,6 +24,10 @@ const transport=new StreamableHTTPClientTransport(new URL(`${root}/mcp`),{reques
 try{await client.connect(transport);const list=await client.listTools();assert.equal(list.tools.length,25,`expected 25 tools got ${list.tools.length}`);assert(list.tools.find(x=>x.name==='get_config'));
 const result=await client.callTool({name:'get_config',arguments:{}},undefined,{timeout:20000});assert(!result.isError,'local agent tool should succeed');console.log(`PASS: OAuth PKCE + DCR + Bearer + StreamableHTTP + WS agent + ${list.tools.length} tools + callTool`);
 }finally{await client.close();}
+const linkClient=new Client({name:'karis-link-only-test',version:'1.0.0'},{capabilities:{}});
+const linkTransport=new StreamableHTTPClientTransport(new URL(`${root}/mcp/${linkKey}`));
+try{await linkClient.connect(linkTransport);const linked=await linkClient.listTools();assert.equal(linked.tools.length,25);const linkedResult=await linkClient.callTool({name:'get_config',arguments:{}},undefined,{timeout:20000});assert(!linkedResult.isError);console.log(`PASS: link-only endpoint, no OAuth headers/UI, ${linked.tools.length} tools + callTool`);}finally{await linkClient.close();}
+const badLink=await fetch(`${root}/mcp/${'A'.repeat(43)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(badLink.status,404);
 const refresh=await fetch(meta.token_endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:rc.client_id,refresh_token:t.refresh_token,resource:`${root}/mcp`})});const r=await refresh.json();assert.equal(refresh.status,200,JSON.stringify(r));assert(r.access_token);
 await fetch(`${root}/revoke`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:rc.client_id,token:r.access_token})});
 const revoked=await fetch(`${root}/mcp`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${r.access_token}`},body:'{}'});assert.equal(revoked.status,401);
