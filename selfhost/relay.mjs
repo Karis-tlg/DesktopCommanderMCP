@@ -77,7 +77,7 @@ const provider = {
  }
 };
 const esc = str => String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const app=express();app.disable('x-powered-by');app.use((req,res,next)=>{res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Robots-Tag','noindex, nofollow');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");next();});
+const app=express();app.disable('x-powered-by');app.set('trust proxy', 'loopback');app.use((req,res,next)=>{res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Robots-Tag','noindex, nofollow');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");next();});
 app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:false,limit:'16kb'}));
 app.use(mcpAuthRouter({provider,issuerUrl:issuer,resourceServerUrl:resource,scopesSupported:['mcp'],resourceName:'Karis Desktop Commander MCP'}));
 let failures=new Map();
@@ -114,14 +114,14 @@ const rpc = (kind,args={},ms=45000) => new Promise((resolve,reject)=>{
 });
 const auth=requireBearerAuth({verifier:provider,requiredScopes:['mcp'],resourceMetadataUrl:getOAuthProtectedResourceMetadataUrl(resource),expectedResource:resource});
 const handleMcp = async(req,res)=>{
- const server=new Server({name:'karis-selfhost-mcp',version:'0.1.0'},{capabilities:{tools:{}}});
+ const server=new Server({name:'karis-selfhost-mcp',version:'0.1.0'},{capabilities:{tools:{}},instructions:'Private remote device MCP. File and terminal tools execute with the agent operating-system permissions. Use read-only tools for inspection; only run write or shell operations when requested by the user.'});
  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools}));
  server.setRequestHandler(CallToolRequestSchema,async r=>{
   const name=r.params.name;
   if(!tools.some(t=>t.name===name))return {isError:true,content:[{type:'text',text:'Unknown tool'}]};
   try{return await rpc('call',{name,arguments:r.params.arguments||{}},50000)}catch(e){return {isError:true,content:[{type:'text',text:e.message}]};}
  });
- const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
+ const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined});
  try{await server.connect(transport);await transport.handleRequest(req,res,req.body);}catch(e){if(!res.headersSent)res.status(500).json({error:'Internal MCP server error'});}finally{await server.close().catch(()=>{});}
 };
 // Standard endpoint uses OAuth. A separate high-entropy capability URL skips the OAuth UI;
@@ -139,7 +139,23 @@ server.on('upgrade',(req,socket,head)=>{
 wss.on('connection',ws=>{
  if(active)active.close(1000,'Replaced by new agent');active=ws;tools=[];
  ws.on('message',raw=>{let msg;try{msg=JSON.parse(raw.toString())}catch{return;}
-   if(msg.kind==='tools'&&Array.isArray(msg.tools)){tools=msg.tools.filter(t=>t&&typeof t.name==='string'&&/^[\w.-]+$/.test(t.name)).slice(0,100);return;}
+   if(msg.kind==='tools'&&Array.isArray(msg.tools)){
+     // The upstream local server offers ui:// resources which this relay does not implement.
+     // Publishing those _meta outputTemplates causes clients to discover missing UI resources.
+     // Use compact, ordinary MCP tool descriptors without advertising unavailable widgets.
+     tools=msg.tools.filter(t=>t&&typeof t.name==='string'&&/^[\w.-]+$/.test(t.name)).slice(0,100).map(t=>({
+       name:t.name,
+       description:String(t.description||t.name).slice(0,1000),
+       inputSchema:t.inputSchema?.type==='object'?t.inputSchema:{type:'object',properties:{}},
+       annotations:{
+         title:String(t.annotations?.title||t.name).slice(0,120),
+         readOnlyHint:t.annotations?.readOnlyHint===true,
+         destructiveHint:t.annotations?.destructiveHint===true,
+         openWorldHint:t.annotations?.openWorldHint===true
+       }
+     }));
+     return;
+   }
    if(msg.kind==='response'){const task=waiting.get(msg.id);if(!task)return;waiting.delete(msg.id);clearTimeout(task.timer);if(msg.error)task.reject(new Error(String(msg.error).slice(0,300)));else task.resolve(msg.result);}
  });
  ws.on('close',()=>{if(active===ws){active=null;tools=[];for(const [id,t]of waiting){clearTimeout(t.timer);t.reject(new Error('Device disconnected'));waiting.delete(id);}}});

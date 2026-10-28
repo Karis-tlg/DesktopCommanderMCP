@@ -11,6 +11,7 @@ This project forks the MIT-licensed `@wonderwhy-er/desktop-commander` local MCP 
 - No artificial 10,000-tool-calls/month limit in this self-host. Vendor dashboard counters remain separate.
 - Default third-party telemetry, vendor flags and tool-call recording are disabled. Agent child uses separate HOME so existing Desktop Commander settings are not touched.
 - Built and tested with 25 MCP tools, `get_config` over HTTPS → WS → local MCP, OAuth/PKCE, refresh rotation/revocation, plus a link-only client with no Authorization header.
+- ChatGPT plugin compatibility: remote transport returns standard SSE streams (not JSON-only), strips local-only `ui://` resource templates which the relay does not serve, caps tool descriptions at 1,000 characters, and retains explicit tool safety annotations. Both OAuth and no-OAuth link modes pass HTTPS SDK and raw SSE initialization tests.
 
 ## Hosted VPS status
 
