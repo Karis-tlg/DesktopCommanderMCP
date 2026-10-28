@@ -41,7 +41,7 @@ node dist/index.js remote --endpoint https://your-host/mcp
 
 ## Add to an MCP client
 
-**Simplest setup (no OAuth pop-up):** choose `No authentication` in the MCP client and paste the private single-link endpoint `https://panel-rs.tail79e063.ts.net/mcp/<PRIVATE-LINK-KEY>`. The link key is embedded in the URL, so there is no second login step. Keep the URL secret; it grants full terminal/file tools. The key is in `../runtime/private/link.key`; rotate it by replacing that file with a fresh random key, then restart `karis-mcp-relay.service` and update the client URL.
+**Simplest setup (no OAuth pop-up):** choose `No authentication` in the MCP client and paste the private single-link endpoint `https://panel-rs.tail79e063.ts.net/mcp/<PRIVATE-LINK-KEY>`. The link key is embedded in the URL, so there is no second login step. Keep the URL secret; it grants full terminal/file tools. The key is in `../runtime/private/link.key`; rotate it by replacing that file with a fresh random key, then restart `karis-mcp-relay.service` and update the client URL. To print the exact URL on the VPS without revealing the key to Git or logs, run `./deploy/show-connect-url.sh` from the source directory; copy its output directly into your MCP client.
 
 **Alternative:** configure `https://panel-rs.tail79e063.ts.net/mcp` with OAuth. On first authorization the server shows an approval page; enter the private admin approval password stored in `../runtime/private/admin.key`. Settings are at `https://panel-rs.tail79e063.ts.net/settings`; OAuth clients can be revoked there or via `/revoke`.
 
