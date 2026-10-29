@@ -10,13 +10,17 @@
     const dialog = document.getElementById(name);
     if (!(dialog instanceof HTMLDialogElement)) return;
     if (!dialog.open) dialog.showModal();
+    dialog.querySelectorAll('.device-selected').forEach(row => row.classList.remove('device-selected'));
     if (focusId) {
       const row = [...dialog.querySelectorAll('[data-device-id]')].find(el => el.dataset.deviceId === focusId);
       if (row) {
         row.scrollIntoView({block:'nearest'});
         row.classList.add('device-selected');
+        (row.querySelector('button, summary') || row).focus({preventScroll:true});
+        return;
       }
     }
+    if (name === 'add-device-dialog') dialog.querySelector('#device-name')?.focus();
   };
 
   document.addEventListener('click', async event => {

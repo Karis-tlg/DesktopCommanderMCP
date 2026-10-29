@@ -29,7 +29,7 @@ const ico = (name) => {
   };
   return '<span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' + (paths[name] || paths.grid) + '</svg></span>';
 };
-const brand = () => '<div class="brand"><span class="brand-mark">' + ico('grid') + '</span><span><span class="brand-name">KARIS<span style="color:#43d3b7">.</span></span><span class="brand-sub">CONTROL CLOUD</span></span></div>';
+const brand = () => '<div class="brand"><span class="brand-mark">' + ico('grid') + '</span><span><span class="brand-name">KARIS CONTROL</span></span></div>';
 const page = (title, cls, contents) => '<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>' + esc(title) + '</title><style>' + stylesheet + '</style></head><body class="' + cls + '">' + contents + '</body></html>';
 
 export function renderLoginView(errorMessage = '') {
@@ -130,7 +130,7 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
   const sidebar = '<aside class="sidebar">' + brand() + '<nav aria-label="Điều hướng chính"><div class="nav">' +
     nav.map(([id,ic,label]) => '<a href="/dashboard?view=' + id + '" data-page-nav="' + id + '"' + ((id===current || (['devices','connection'].includes(current)&&id==='overview'))?' class="active" aria-current="page"':'') + '>' + ico(ic) + '<span>' + label + '</span></a>').join('') +
     '</div></nav></aside>';
-  const top = '<header class="topbar"><strong class="topbar-heading">Karis Control</strong><div class="topbar-right"><span id="live-health" class="health-state"><span class="status-dot is-online"></span><span>Đang cập nhật trực tiếp</span></span>' +
+  const top = '<header class="topbar"><strong class="topbar-heading">Karis Control</strong><div class="topbar-right"><span id="live-health" class="health-state" role="status" aria-live="polite"><span class="status-dot"></span><span>Đang kết nối</span></span>' +
     postForm('/dashboard/logout','<button class="button subtle signout" type="submit">' + ico('logout') + '<span>Đăng xuất</span></button>') + '</div></header>';
   const metrics = '<div class="metrics" data-live-region="metrics">' +
     [['Trực tuyến',online,'monitor'],['Thiết bị',list.length,'server'],['Lượt gọi',usageTotal,'activity']].map(([name,n,ic]) =>

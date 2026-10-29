@@ -90,6 +90,7 @@ try {
   await page.click('.add-trigger');
   assert(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open),'add-device must open modal');
   assert(await page.$('#add-device-dialog input[name="displayName"]'),'new device field missing');
+  assert.equal(await page.evaluate(()=>document.activeElement?.id),'device-name','add-device should focus the device name input');
   await page.keyboard.press('Escape');
   assert(!(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open)),'escape must close modal');
 
