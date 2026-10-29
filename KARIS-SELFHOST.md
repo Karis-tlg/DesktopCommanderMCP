@@ -22,7 +22,7 @@ This fork keeps the MIT-licensed Desktop Commander local MCP tools and adds an i
 - Local endpoint: `http://127.0.0.1:18791/mcp`; local panel: `http://127.0.0.1:18791/dashboard`.
 - Services: `karis-mcp-relay.service` and `karis-mcp-agent.service`, enabled on boot.
 - Secrets: `runtime/private/`, owner-only. Never commit or share the admin password, OAuth tokens, or device pairing links.
-- **Deployment verified (2026-10-29):** both Karis services restarted successfully. Public `/healthz` returns `ok=true`, `agent=true`, `maxDevices=32`, `pairedDevices=1`, `toolCount=35`, and `quota=none`. Public `/dashboard` now serves the admin sign-in page (HTTP 401 is expected before login); the MCP endpoint requires OAuth and returns the correct Bearer challenge when unauthenticated. The relay listens only on `127.0.0.1:18791` behind Tailscale Funnel.
+- **Live baseline verified (2026-10-29):** both Karis services were restarted and the public health endpoint reports `ok=true`, `agent=true`, `maxDevices=32`, `pairedDevices=1`, `toolCount=35`, and `quota=none`. The dashboard serves its admin sign-in page and the relay listens only on `127.0.0.1:18791` behind Tailscale Funnel. The follow-up reverse-proxy Origin fix is committed as `6faa04e` and passes the focused test, but is **not yet active in the running service** because the service-management allowlist currently denies automated restart. Run the project-scoped restart script below to activate it; do not bypass the guard or kill service PIDs.
 
 ## Activate the current release
 
