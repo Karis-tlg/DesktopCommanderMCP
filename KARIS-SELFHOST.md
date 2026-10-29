@@ -2,16 +2,16 @@
 
 This fork keeps the MIT-licensed Desktop Commander local MCP tools and adds an independently implemented self-hosted remote MCP relay, per-device agent credentials, OAuth, and an admin dashboard. The hosted Remote Desktop Commander backend is proprietary; this project implements documented public workflows rather than copying its closed implementation.
 
-Current self-host patch release: [selfhost-v0.3.4-karis.1](https://github.com/Karis-tlg/DesktopCommanderMCP/releases/tag/selfhost-v0.3.4-karis.1). The older tag `v0.3.4-karis.1` is deprecated because it points to an upstream commit that does not include this self-host patch.
+Current self-host patch release: [selfhost-v0.3.4-karis.2](https://github.com/Karis-tlg/DesktopCommanderMCP/releases/tag/selfhost-v0.3.4-karis.2). Release `selfhost-v0.3.4-karis.1` is superseded; the older tag `v0.3.4-karis.1` is deprecated because it points to an upstream commit that does not include this self-host patch.
 
-## Current feature set in source/patch release selfhost-v0.3.4-karis.1
+## Current feature set in source/patch release selfhost-v0.3.4-karis.2
 
 - One Streamable HTTP MCP endpoint at `/mcp`, protected by OAuth 2.0 authorization-code + PKCE, dynamic client registration, refresh/revoke, and protected-resource metadata.
 - Admin panel at `/dashboard`: admin sign-in, add device, per-device pairing link, choose default device, online/offline and last-seen status, rotate/revoke device, revoke all devices, and revoke individual OAuth clients.
 - Up to 32 registered devices. Each device has a separate high-entropy pairing key stored as a hash on the server. Pair links are shown once and can be rotated.
 - Local Desktop Commander tool schemas are retained. Tools have an optional `target_device` argument; omit it to use the default device. Additional tools include `list_paired_devices`, `get_current_user_info`, `ping_device`, `shutdown_device_agent`, `get_prompt_library`, `get_recent_tool_activity`, `get_usage_statistics`, and `submit_feedback`.
 - Activity records include tool, device, status and duration only; arguments and file contents are not recorded.
-- Dashboard CSRF protection supports reverse proxies that rewrite the upstream `Host`: it accepts only the configured public issuer origin (or a same-origin loopback request), and rejects untrusted cross-origin requests. Regression-tested with a simulated proxy Host rewrite and a malicious Origin.
+- Dashboard forms use a random session-bound CSRF token. A mismatched browser `Origin` behind a proxy/webview no longer blocks a legitimate form when its CSRF token is valid; requests with a hostile Origin and no token remain blocked. Regression-tested with a Host-rewriting proxy, missing-token hostile Origin, and valid-token Origin mismatch.
 - No hosted vendor 10,000 tool-calls/month quota is enforced by this self-host. The vendor's quota is separate and is not changed.
 
 ## VPS deployment

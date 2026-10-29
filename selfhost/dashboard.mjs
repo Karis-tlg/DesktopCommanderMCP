@@ -96,12 +96,19 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
       '<section><h2>Usage and recent activity</h2><p class="muted">Lifetime tool calls: ' + usageTotal + ' · Monthly hosted quota: none. Tool arguments and file contents are not recorded in this activity list.</p><ul class="clients">' + activityRows + '</ul></section>' +
       '<section><h2>Authorized MCP clients</h2><p class="muted">Each client has separate OAuth tokens. Revoking a client removes its access and refresh tokens.</p><ul class="clients">' + clientRows + '</ul></section>' +
       '<footer>Private self-hosted service · Device tools run with the OS permissions of each connected computer. Protect pairing links and only authorize clients you trust.</footer></html>';
-    res.status(200).type('html').send(html);
+    const csrfField = '<input type="hidden" name="_csrf" value="' + esc(s.csrfToken) + '">';
+    res.status(200).type('html').send(html.replace(/<form\b[^>]*>/g, form => form + csrfField));
   }
   function requireSession(req, res) {
     const found = sessionFor(req);
     if (!found) { res.status(401).type('html').send(loginPage('Your session expired. Please sign in again.')); return null; }
-    if (!sameOrigin(req)) { res.status(403).send('Cross-origin request rejected'); return null; }
+    const suppliedCsrf = req.body?._csrf;
+    const validCsrf = typeof suppliedCsrf === 'string' && equal(suppliedCsrf, found.session.csrfToken || '');
+    // Browsers behind some reverse-proxy/webview setups can send an Origin that
+    // differs from the configured public issuer. A session-bound token is the
+    // primary CSRF proof; retain the Origin check as a fallback for legacy forms.
+    const sameOriginRequest = Boolean(req.headers.origin) && sameOrigin(req);
+    if (!validCsrf && !sameOriginRequest) { res.status(403).send('Cross-origin request rejected'); return null; }
     return found;
   }
   function uniqueAlias(base, exceptId = '') {
@@ -135,7 +142,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     }
     failures.delete(ip);
     const token = random();
-    sessions.set(digest(token), { expiresAt: Date.now() + 12 * 60 * 60 * 1000, pendingLink: null });
+    sessions.set(digest(token), { expiresAt: Date.now() + 12 * 60 * 60 * 1000, pendingLink: null, csrfToken: random() });
     res.setHeader('Set-Cookie', cookieName + '=' + encodeURIComponent(token) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200' + secure);
     res.redirect(303, '/dashboard');
   });

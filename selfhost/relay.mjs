@@ -257,7 +257,7 @@ const textResult = value => ({ content: [{ type: 'text', text: typeof value === 
 const toolError = message => ({ isError: true, content: [{ type: 'text', text: String(message) }] });
 
 const handleMcp = async (req, res) => {
-  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.0' }, {
+  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.2' }, {
     capabilities: { tools: {} },
     instructions: 'Private self-hosted Desktop Commander MCP. File and terminal tools execute with the OS permissions of the selected device. Use target_device when a user names a machine; otherwise the default device is used. Do not run destructive commands unless the user requests them.'
   });
@@ -272,7 +272,7 @@ const handleMcp = async (req, res) => {
         recordActivity('service', route.originalName, 'ok', 0);
         return textResult({
           service: 'Karis Desktop Commander self-host',
-          version: process.env.KARIS_VERSION || '0.3.4-karis.0',
+          version: process.env.KARIS_VERSION || '0.3.4-karis.2',
           quota: 'No vendor 10,000-calls/month quota is enforced by this self-host',
           connectedDevices: devices.size,
           pairedDevices: activeRecords().length,
@@ -349,7 +349,7 @@ const handleMcp = async (req, res) => {
 };
 
 const appDevicePackage = process.env.KARIS_AGENT_PACKAGE_URL ||
-  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/v0.3.4-karis.0/karis-tlg-desktop-commander-0.3.4-karis.0.tgz';
+  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.2/karis-tlg-desktop-commander-0.3.4-karis.2.tgz';
 
 const appServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });

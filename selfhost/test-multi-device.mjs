@@ -42,7 +42,7 @@ const child = spawn(process.execPath, [relayFile], {
     KARIS_ADMIN_FILE: path.join(testDir, 'admin.key'),
     KARIS_AGENT_FILE: path.join(testDir, 'agent.key'),
     KARIS_LINK_KEY_FILE: path.join(testDir, 'link.key'),
-    KARIS_VERSION: '0.3.4-karis.0',
+    KARIS_VERSION: '0.3.4-karis.2',
     KARIS_AGENT_PACKAGE_URL: 'https://example.invalid/test-agent.tgz'
   },
   stdio: ['ignore', 'pipe', 'pipe']
@@ -195,6 +195,9 @@ try {
   cookie = login.headers.get('set-cookie').split(';')[0];
   const page = await fetch(root + '/dashboard', { headers: { Cookie: cookie } });
   assert.equal(page.status, 200);
+  const pageHtml = await page.text();
+  const csrfToken = pageHtml.match(/name="_csrf" value="([^"]+)"/)?.[1];
+  assert(csrfToken && csrfToken.length >= 32, 'dashboard forms must receive a session-bound CSRF token');
 
   const crossOriginCreate = await fetch(root + '/dashboard/devices/new', {
     method: 'POST',
@@ -203,6 +206,13 @@ try {
     redirect: 'manual'
   });
   assert.equal(crossOriginCreate.status, 403, 'cross-origin device creation must remain blocked');
+  const noOriginCreate = await fetch(root + '/dashboard/devices/new', {
+    method: 'POST',
+    headers: { Cookie: cookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ displayName: 'Blocked Missing Origin', alias: 'blocked_no_origin' }),
+    redirect: 'manual'
+  });
+  assert.equal(noOriginCreate.status, 403, 'requests without Origin or CSRF token must remain blocked');
 
   // Simulate Tailscale Funnel/reverse proxy rewriting Host to its private upstream
   // while the browser Origin remains the configured public issuer. This used to
@@ -224,6 +234,28 @@ try {
   const proxyDbAfterCleanup = JSON.parse(fs.readFileSync(path.join(testDir, 'oauth.json'), 'utf8'));
   assert(proxyDbAfterCleanup.devices[proxyRecord.id].revokedAt, 'test device must be revoked after proxy regression check');
 
+  // A valid session-bound token must allow the legitimate dashboard form even
+  // when an embedded browser/reverse-proxy setup supplies a mismatched Origin.
+  const tokenProtectedCreate = await fetch(root + '/dashboard/devices/new', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: 'https://unexpected-browser-origin.invalid', Host: 'private-upstream.internal', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ displayName: 'CSRF Token Regression', alias: 'csrf_token_test', _csrf: csrfToken }),
+    redirect: 'manual'
+  });
+  assert.equal(tokenProtectedCreate.status, 303, 'valid session CSRF token must survive mismatched browser Origin');
+  const csrfDb = JSON.parse(fs.readFileSync(path.join(testDir, 'oauth.json'), 'utf8'));
+  const csrfRecord = Object.values(csrfDb.devices).find(d => d.alias === 'csrf_token_test');
+  assert(csrfRecord, 'valid CSRF token should allow device creation');
+  const csrfRevoke = await fetch(root + '/dashboard/devices/' + encodeURIComponent(csrfRecord.id) + '/revoke', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: 'https://unexpected-browser-origin.invalid', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ _csrf: csrfToken }),
+    redirect: 'manual'
+  });
+  assert.equal(csrfRevoke.status, 303, 'CSRF token should protect revoke action too');
+  const csrfDbAfterCleanup = JSON.parse(fs.readFileSync(path.join(testDir, 'oauth.json'), 'utf8'));
+  assert(csrfDbAfterCleanup.devices[csrfRecord.id].revokedAt, 'CSRF regression device must be revoked after test');
+
   const pcOneToken = await addDevice('Kha Windows PC', 'pc_one', true);
   const pcTwoToken = await addDevice('Office Windows', 'pc_two');
   const macToken = await addDevice('Kha MacBook', 'macbook');
@@ -238,7 +270,7 @@ try {
   const agentHome = path.join(testDir, 'real-agent-home');
   realAgent = spawn(process.execPath, [path.join(sourceRoot, 'dist', 'index.js'), 'remote', '--endpoint', root + '/pair/' + realAgentToken, '--name', 'local_agent', '--no-save'], {
     cwd: sourceRoot,
-    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.0' },
+    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.2' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   realAgent.stdout.pipe(relayLog);
