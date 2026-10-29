@@ -203,6 +203,27 @@ try {
     redirect: 'manual'
   });
   assert.equal(crossOriginCreate.status, 403, 'cross-origin device creation must remain blocked');
+
+  // Simulate Tailscale Funnel/reverse proxy rewriting Host to its private upstream
+  // while the browser Origin remains the configured public issuer. This used to
+  // reject valid same-origin dashboard form submissions.
+  const proxyOriginCreate = await fetch(root + '/dashboard/devices/new', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: root, Host: 'private-upstream.internal', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ displayName: 'Proxy Host Regression', alias: 'proxy_host_test' }),
+    redirect: 'manual'
+  });
+  assert.equal(proxyOriginCreate.status, 303, 'configured issuer Origin must be accepted when reverse proxy rewrites Host');
+  const proxyDb = JSON.parse(fs.readFileSync(path.join(testDir, 'oauth.json'), 'utf8'));
+  const proxyRecord = Object.values(proxyDb.devices).find(d => d.alias === 'proxy_host_test');
+  assert(proxyRecord, 'same-origin device creation must succeed behind a Host-rewriting proxy');
+  const proxyRevoke = await fetch(root + '/dashboard/devices/' + encodeURIComponent(proxyRecord.id) + '/revoke', {
+    method: 'POST', headers: { Cookie: cookie, Origin: root }, redirect: 'manual'
+  });
+  assert.equal(proxyRevoke.status, 303, 'test device cleanup should succeed');
+  const proxyDbAfterCleanup = JSON.parse(fs.readFileSync(path.join(testDir, 'oauth.json'), 'utf8'));
+  assert(proxyDbAfterCleanup.devices[proxyRecord.id].revokedAt, 'test device must be revoked after proxy regression check');
+
   const pcOneToken = await addDevice('Kha Windows PC', 'pc_one', true);
   const pcTwoToken = await addDevice('Office Windows', 'pc_two');
   const macToken = await addDevice('Kha MacBook', 'macbook');

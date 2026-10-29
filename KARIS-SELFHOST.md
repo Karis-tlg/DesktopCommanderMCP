@@ -22,11 +22,11 @@ This fork keeps the MIT-licensed Desktop Commander local MCP tools and adds an i
 - Local endpoint: `http://127.0.0.1:18791/mcp`; local panel: `http://127.0.0.1:18791/dashboard`.
 - Services: `karis-mcp-relay.service` and `karis-mcp-agent.service`, enabled on boot.
 - Secrets: `runtime/private/`, owner-only. Never commit or share the admin password, OAuth tokens, or device pairing links.
-- **Live baseline verified (2026-10-29):** both Karis services were restarted and the public health endpoint reports `ok=true`, `agent=true`, `maxDevices=32`, `pairedDevices=1`, `toolCount=35`, and `quota=none`. The dashboard serves its admin sign-in page and the relay listens only on `127.0.0.1:18791` behind Tailscale Funnel. The follow-up reverse-proxy Origin fix is committed as `6faa04e` and passes the focused test, but is **not yet active in the running service** because the service-management allowlist currently denies automated restart. Run the project-scoped restart script below to activate it; do not bypass the guard or kill service PIDs.
+- **Live deployment verified (2026-10-29):** the reverse-proxy Origin fix (`6faa04e`) is active. Both Karis services are running; public health reports `ok=true`, `agent=true`, `maxDevices=32`, `pairedDevices=1`, `toolCount=35`, and `quota=none`. The dashboard serves its admin sign-in page, and the relay listens only on `127.0.0.1:18791` behind Tailscale Funnel. The focused integration test now simulates a proxy rewriting `Host`, confirms legitimate dashboard device creation succeeds, verifies that a malicious Origin is still rejected, and revokes the test device during cleanup.
 
-## Activate the current release
+## Restart after future source updates
 
-Run from a VPS terminal with permission to manage the two named services:
+When deploying future changes, run from a VPS terminal with permission to manage the two named services:
 
 ```bash
 cd /home/ubuntu/workspace/projects/desktop-commander-selfhost/source
