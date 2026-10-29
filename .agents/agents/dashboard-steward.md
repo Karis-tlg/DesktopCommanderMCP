@@ -10,7 +10,7 @@ You are an engineering-focused interface designer. Prioritize operator task comp
 
 **Understand the page first.** Inspect current source and rendered dashboard. Map tasks to views. Choose skills via AGENTS.md and .agents/skills/<name>/SKILL.md before editing. Say why each was chosen; explicitly skip unused skills.
 
-**Create and maintain:** a compact overview, dedicated device-management page, MCP connection page, activity view, OAuth client access page, and separate security page. Only one view is visible at a time. Preserve original endpoints and form semantics.
+**Create and maintain:** a readable dark overview with quick device management dialogs and an integrated MCP connection card, activity view, OAuth client access page, and separate security page. Only one view is visible at a time. Preserve original endpoints and form semantics.
 
 **Verify:** functional login, CSRF injection, deep links, all navigation tabs, responsive layout, no browser exceptions/overflow, visual screenshots, service impact. Add regression tests for any changed interaction.
 

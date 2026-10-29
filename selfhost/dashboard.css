@@ -1388,3 +1388,203 @@ body.dashboard-body { background:var(--canvas); font-family:"Segoe UI Variable",
   .topbar-title { gap:5px; }
   .page-head h1 { font-size:27px; }
 }
+
+
+/* Karis Control — dark operational workspace. Shared design tokens are scoped to the dashboard. */
+body.dashboard-body {
+  --canvas:#0b1017;--surface:#141b24;--surface2:#1a232e;--surface3:#202b37;--ink:#eaf0f6;--soft:#a9b8c7;--muted:#899aa9;--line:#283441;
+  --deep:#0e141c;--brand:#36bba1;--brand2:#36bba1;--brand-soft:#17372f;--danger:#ff8c85;--danger-soft:#36201f;--shadow:none;
+  background:var(--canvas); color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+.dashboard-body *, .dashboard-body *::before,.dashboard-body *::after {box-sizing:border-box}
+.dashboard-body h1,.dashboard-body h2,.dashboard-body p{margin:0}
+.dashboard-body h1{font-size:clamp(30px,3vw,40px);font-weight:740;letter-spacing:-.045em}
+.dashboard-body h2{font-size:21px;letter-spacing:-.03em;font-weight:700}
+.dashboard-body button,.dashboard-body input,.dashboard-body summary{font:inherit}
+.dashboard-body .icon{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.dashboard-body .icon svg{stroke-width:1.9}
+.dashboard-body .app-shell{min-height:100vh;display:grid;grid-template-columns:240px minmax(0,1fr)}
+.dashboard-body .sidebar{position:sticky;top:0;height:100vh;min-height:0;display:flex;flex-direction:column;gap:0;padding:29px 14px 19px;background:#0d131b;border-right:1px solid #28323d;color:var(--ink)}
+.dashboard-body .brand{display:flex;align-items:center;gap:11px;padding:3px 10px 34px}
+.dashboard-body .brand-mark{background:#19362f;color:var(--brand);width:40px;height:40px;border-radius:10px;box-shadow:none}
+.dashboard-body .brand-name{font-size:17px;color:#f0f6fa;letter-spacing:.015em}
+.dashboard-body .brand-sub{font-size:10px;font-weight:650;color:#9daebc;letter-spacing:.09em}
+.dashboard-body .nav{display:grid;gap:6px}
+.dashboard-body .nav a{display:flex;gap:13px;align-items:center;min-height:49px;padding:11px 15px;border-radius:9px;font-size:15px;font-weight:570;color:#a9b9c8;transition:color .14s,background .14s}
+.dashboard-body .nav a .icon{color:#93a5b7}
+.dashboard-body .nav a:hover,.dashboard-body .nav a:focus-visible{background:#19232e;color:var(--ink)}
+.dashboard-body .nav a.active{background:#19392f;color:#d9fff4;font-weight:690;box-shadow:inset 3px 0 0 #40bea5}
+.dashboard-body .nav a.active .icon{color:#48d2b3}
+.dashboard-body .sidebar-footer{margin-top:auto;padding:18px 13px 4px;border-top:1px solid var(--line);display:flex;align-items:center;gap:11px;font-size:13px;color:#b0c0cb}
+.dashboard-body .status-dot{width:8px;height:8px;border-radius:99px;background:#718393;flex:none;display:inline-block}
+.dashboard-body .status-dot.is-online{background:#39d5a0;box-shadow:0 0 0 3px #173d31}
+.dashboard-body .main-wrap{min-width:0}
+.dashboard-body .topbar{display:flex;align-items:center;justify-content:space-between;height:75px;padding:0 clamp(24px,4.2vw,65px);background:#101720;border-bottom:1px solid #283441}
+.dashboard-body .topbar-heading{font-size:18px;letter-spacing:-.02em;font-weight:710}
+.dashboard-body .topbar-right{display:flex;align-items:center;gap:22px}
+.dashboard-body .health-state{font-size:13px;color:#b9c8d4;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.dashboard-body .health-state.is-delayed{color:#f0bc81}
+.dashboard-body .health-state.is-delayed .status-dot{background:#f0b35a;box-shadow:0 0 0 3px #40321f}
+.dashboard-body .button{min-height:43px;padding:10px 15px;display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid transparent;border-radius:9px;font-size:14px;font-weight:650;cursor:pointer;white-space:nowrap;transition:background .14s,border-color .14s,color .14s;line-height:1.25}
+.dashboard-body .button .icon{width:18px;height:18px}
+.dashboard-body .button:hover{transform:none}
+.dashboard-body .button:active{transform:none}
+.dashboard-body .button.primary{color:#05221e;background:#4dd1b3;border-color:#4dd1b3}
+.dashboard-body .button.primary:hover{background:#6ae2c6}
+.dashboard-body .button.subtle{color:#d6e3ed;background:#202a35;border-color:#344350}
+.dashboard-body .button.subtle:hover{background:#2a3744}
+.dashboard-body .button.text-action{background:transparent;border-color:transparent;color:#70dfc2;padding-inline:8px}
+.dashboard-body .button.text-action:hover{background:#1a302e;color:#a2ffe5}
+.dashboard-body .button.danger{color:#ffd9d7;background:#492725;border-color:#75504c}
+.dashboard-body .button.danger:hover{background:#63312e}
+.dashboard-body .button.block{width:100%}
+.dashboard-body .signout{background:transparent!important;border-color:transparent!important;color:#c3d0dc!important;padding:9px 10px}
+.dashboard-body .workspace{max-width:1480px;padding:34px clamp(24px,4.2vw,65px) 65px;margin:0 auto}
+.dashboard-body .page-head{display:flex;align-items:center;justify-content:space-between;gap:22px;margin-bottom:22px}
+.dashboard-body .page-head p{font-size:16px;margin-top:5px;color:var(--soft)}
+.dashboard-body .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0 0 19px}
+.dashboard-body .metric{display:flex;flex-direction:column;justify-content:space-between;min-height:113px;padding:17px 20px;border-radius:12px;border:1px solid #2a3845;background:var(--surface);box-shadow:none}
+.dashboard-body .metric>span{color:#adbdcb;display:flex;gap:10px;align-items:center;font-size:14px;font-weight:570}
+.dashboard-body .metric>span .icon{color:#7bd1bc;width:19px;height:19px}
+.dashboard-body .metric strong{font-size:30px;font-weight:760;letter-spacing:-.035em;line-height:1.1;font-variant-numeric:tabular-nums}
+.dashboard-body .overview-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,1fr);gap:17px;align-items:stretch}
+.dashboard-body .panel{border:1px solid #2a3845;background:var(--surface);border-radius:13px;padding:22px;min-width:0;box-shadow:none}
+.dashboard-body .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.dashboard-body .panel-head h2{display:flex;align-items:center;gap:10px}
+.dashboard-body .panel-head h2 .icon{color:var(--brand)}
+.dashboard-body .panel-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dashboard-body .section-count{color:#99b2bc;background:#222d38;font-size:13px;font-weight:620;border-radius:7px;padding:4px 8px}
+.dashboard-body .device-list{display:grid;gap:0}
+.dashboard-body .device-tile{display:grid;grid-template-columns:44px minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:15px 0;border-top:1px solid #273441}
+.dashboard-body .device-tile:first-child{border-top:none}
+.dashboard-body .device-icon{display:grid;place-items:center;width:44px;height:44px;background:#202f3d;border-radius:11px;color:#9bd5e8}
+.dashboard-body .device-icon .icon{width:22px;height:22px}
+.dashboard-body .device-info{min-width:0;display:grid;gap:4px}
+.dashboard-body .device-info strong{font-size:16px;font-weight:680;overflow-wrap:anywhere}
+.dashboard-body .device-sub{color:#9cadb9;font-size:13px}
+.dashboard-body .device-connect{display:flex;align-items:center}
+.dashboard-body .status-badge{display:inline-flex;align-items:center;gap:8px;color:#a3b5c4;font-size:13px;white-space:nowrap}
+.dashboard-body .status-badge.connected{color:#91e2c6}
+.dashboard-body .manage-button{min-height:37px;padding:8px 12px}
+.dashboard-body .manage-button .icon{width:14px;height:14px}
+.dashboard-body .mcp-panel{display:flex;flex-direction:column;min-width:0}
+.dashboard-body .mcp-panel p{font-size:15px;color:var(--soft);line-height:1.6;margin:9px 0 26px}
+.dashboard-body .mcp-panel label{font-size:13px;font-weight:670;color:#b6c6d1;margin-bottom:8px}
+.dashboard-body .endpoint-control{display:flex;align-items:stretch;gap:9px;min-width:0}
+.dashboard-body .copy-field{min-width:0;width:100%;flex:1;border-radius:9px;border:1px solid #364656;background:#0e151f;color:#d8e8f4;padding:11px 12px;font-size:14px;line-height:1.45;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.dashboard-body .mcp-note{display:flex;align-items:center;gap:8px;color:#80cdb9;font-size:13px;margin-top:auto;padding-top:23px}
+.dashboard-body .mcp-note .icon{width:18px;height:18px}
+.dashboard-body .recent-panel{margin-top:17px}
+.dashboard-body .activity-list,.dashboard-body .client-list{margin:0;padding:0;list-style:none}
+.dashboard-body .recent-panel .activity-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}
+.dashboard-body .activity-row{display:flex;gap:13px;align-items:center;border-top:1px solid #283441;padding:13px 0;min-width:0}
+.dashboard-body .activity-row:first-child,.dashboard-body .recent-panel .activity-row:nth-child(2){border-top:0}
+.dashboard-body .activity-symbol{display:flex;color:#7ac8b7;flex:none}
+.dashboard-body .activity-symbol .icon{width:19px;height:19px}
+.dashboard-body .activity-copy{display:grid;gap:3px;min-width:0}
+.dashboard-body .activity-copy strong{font-size:14px;font-weight:640;overflow-wrap:anywhere}
+.dashboard-body .activity-copy small{font-size:13px;color:#a7b6c3}
+.dashboard-body .activity-row time{margin-left:auto;color:#9cadb8;white-space:nowrap;font-size:13px}
+.dashboard-body .client-row{display:flex;align-items:center;gap:15px;padding:16px 0;border-top:1px solid #273441;min-width:0}
+.dashboard-body .client-row:first-child{border-top:0}
+.dashboard-body .client-row>div{display:grid;gap:5px;min-width:0}
+.dashboard-body .client-row strong{font-size:16px}
+.dashboard-body .client-row small{color:var(--soft);font-size:13px}
+.dashboard-body .client-icon{color:#93d9c3}
+.dashboard-body .client-row details{margin-left:auto}
+.dashboard-body .client-row details form{padding:12px;background:#1d2732;border:1px solid #344252;border-radius:8px;display:grid;gap:11px}
+.dashboard-body .client-row details summary{list-style:none;cursor:pointer}
+.dashboard-body .security-panel p{font-size:16px;color:var(--soft);margin:10px 0 28px;max-width:760px}
+.dashboard-body .danger-option>summary{cursor:pointer;list-style:none}
+.dashboard-body .danger-option[open]>form{margin-top:14px;padding:14px;display:grid;gap:12px}
+.dashboard-body .confirm-label{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:14px;color:#e6b8b4}
+.dashboard-body .confirm-label input{accent-color:#e77b73}
+.dashboard-body .device-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.dashboard-body .default-label{font-size:13px;color:#88dcc2;display:flex;gap:6px;align-items:center}
+.dashboard-body .device-more{position:relative}
+.dashboard-body .device-more summary{list-style:none;cursor:pointer}
+.dashboard-body .device-options{display:grid;gap:12px;margin-top:11px;padding:15px;border:1px solid #354555;background:#192430;border-radius:10px}
+.dashboard-body .device-options p{font-size:13px;color:#f5b5a7}
+.dashboard-body .device-options .danger-option>summary{color:#f3a49c}
+.dashboard-body .empty{background:transparent;border:0;color:var(--soft);text-align:left;padding:22px 0;font-size:15px}
+.dashboard-body .notice{margin-bottom:17px;color:#b6eec8;background:#183528;border:1px solid #356851;padding:12px 16px;border-radius:9px;font-size:15px}
+.dashboard-body :is(button,a,input,summary):focus-visible{outline:3px solid #72e7c9;outline-offset:3px}
+.dashboard-body .sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.dashboard-body .control-dialog{position:fixed;inset:0;max-width:min(95vw,560px);width:calc(100% - 30px);max-height:min(90vh,850px);margin:auto;padding:0;border-radius:16px;border:1px solid #40505c;box-shadow:0 25px 100px #000b;background:#151e28;color:#eaf1f5;overflow:auto;overscroll-behavior:contain}
+.dashboard-body .control-dialog.wide{max-width:min(95vw,850px)}
+.dashboard-body .control-dialog::backdrop{background:rgba(0,0,0,.77);backdrop-filter:blur(3px)}
+.dashboard-body .dialog-head{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:23px 26px;border-bottom:1px solid #2c3947}
+.dashboard-body .dialog-head h2{font-size:23px}
+.dashboard-body .icon-button{display:grid;place-items:center;cursor:pointer;border:1px solid #34404c;background:#202b37;color:#d8e6ef;border-radius:9px;width:41px;height:41px}
+.dashboard-body .icon-button:hover{background:#34424e}
+.dashboard-body .icon-button .icon{transform:rotate(45deg);width:20px;height:20px}
+.dashboard-body .dialog-body{padding:22px 26px 27px}
+.dashboard-body .dialog-lead{font-size:15px;color:#acbfcd;margin:0 0 20px}
+.dashboard-body .pair-form{display:grid;gap:19px}
+.dashboard-body .pair-form label{display:grid;gap:8px;color:#cedae4;font-size:14px;font-weight:660}
+.dashboard-body .pair-form input{height:49px;font-size:16px;border:1px solid #3b4b5a;border-radius:9px;background:#0d151e;color:#f0f8fd;padding:10px 14px}
+.dashboard-body .pair-form .button{height:49px;margin-top:6px}
+.dashboard-body .dialog-list{display:grid;gap:0}
+.dashboard-body .control-dialog .device-tile{grid-template-columns:44px minmax(140px,1fr) auto;gap:13px}
+.dashboard-body .control-dialog .device-tools{grid-column:2/-1;justify-content:flex-end}
+.dashboard-body .copy-label{display:block;font-size:14px;margin-bottom:9px;color:#cbd7e0}
+.dashboard-body .secret-value{padding:14px;background:#0d151e;border:1px solid #344553;border-radius:9px;color:#c9eddc;overflow-wrap:anywhere;user-select:all;font:14px/1.7 ui-monospace,Consolas,monospace;margin-bottom:20px}
+@media(max-width:1200px){
+ .dashboard-body .overview-grid{grid-template-columns:1fr}
+ .dashboard-body .mcp-panel{min-height:200px}
+ .dashboard-body .mcp-note{margin-top:15px}
+}
+@media(max-width:950px){
+ .dashboard-body .app-shell{grid-template-columns:205px minmax(0,1fr)}
+ .dashboard-body .workspace{padding-inline:25px}
+ .dashboard-body .topbar{padding-inline:25px}
+ .dashboard-body .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:690px){
+ .dashboard-body .app-shell{display:block}
+ .dashboard-body .sidebar{position:static;min-height:0;height:auto;padding:13px 17px;border-right:0;border-bottom:1px solid var(--line)}
+ .dashboard-body .brand{padding:0 2px 11px}
+ .dashboard-body .brand-mark{width:32px;height:32px}
+ .dashboard-body .nav{display:flex;overflow-x:auto;gap:4px;scrollbar-width:none}
+ .dashboard-body .nav a{white-space:nowrap;min-height:41px;padding:9px 11px;font-size:14px}
+ .dashboard-body .nav a.active{box-shadow:inset 0 -2px 0 #40bea5}
+ .dashboard-body .sidebar-footer{display:none}
+ .dashboard-body .topbar{height:60px;padding:0 18px}
+ .dashboard-body .topbar-heading{font-size:16px}
+ .dashboard-body .topbar-right{gap:9px}
+ .dashboard-body .signout span{display:none}
+ .dashboard-body .health-state{font-size:12px}
+ .dashboard-body .workspace{padding:22px 17px 36px}
+ .dashboard-body .page-head{align-items:flex-start}
+ .dashboard-body .page-head h1{font-size:31px}
+ .dashboard-body .page-head p{font-size:14px}
+ .dashboard-body .page-head .add-trigger{min-width:44px}
+ .dashboard-body .metrics{gap:9px}
+ .dashboard-body .metric{padding:13px 14px;min-height:95px}
+ .dashboard-body .metric>span{font-size:13px}
+ .dashboard-body .metric strong{font-size:27px}
+ .dashboard-body .panel{padding:16px}
+ .dashboard-body .panel-head{flex-wrap:wrap}
+ .dashboard-body .panel-head h2{font-size:19px}
+ .dashboard-body .device-tile{grid-template-columns:41px minmax(0,1fr) auto;gap:10px}
+ .dashboard-body .device-icon{width:41px;height:41px}
+ .dashboard-body .device-connect{grid-column:2;grid-row:2}
+ .dashboard-body .manage-button{grid-column:3;grid-row:1/3}
+ .dashboard-body .recent-panel .activity-list{grid-template-columns:1fr}
+ .dashboard-body .recent-panel .activity-row:nth-child(2){border-top:1px solid #283441}
+ .dashboard-body .endpoint-control{flex-direction:column}
+ .dashboard-body .endpoint-control .button{width:100%}
+ .dashboard-body .control-dialog .device-tile{grid-template-columns:41px minmax(0,1fr)}
+ .dashboard-body .control-dialog .device-connect{grid-row:auto;grid-column:2}
+ .dashboard-body .control-dialog .device-tools{grid-column:1/-1;justify-content:flex-start}
+ .dashboard-body .dialog-head{padding:18px}
+ .dashboard-body .dialog-body{padding:20px 18px}
+}
+@media(max-width:390px){
+ .dashboard-body .health-state>span:last-child{display:none}
+ .dashboard-body .page-head .add-trigger{font-size:13px;padding-inline:10px}
+ .dashboard-body .button{font-size:13px}
+ .dashboard-body .panel-actions .button{padding-inline:7px}
+}
+@media(prefers-reduced-motion:reduce){.dashboard-body *{transition:none!important;animation:none!important}}

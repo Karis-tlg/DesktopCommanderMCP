@@ -78,57 +78,86 @@ function clientRow(c) {
     '/revoke"><label class="confirm-label"><input type="checkbox" required> Xác nhận</label><button class="danger" type="submit">Thu hồi OAuth</button></form></details></li>';
 }
 
-export function renderConsoleView({ list, clients, activities, usageTotal, maxDevices, endpoint, pendingLink, message, csrfToken, view = "overview" }) {
-  const online = list.filter(x => x.online).length;
-  const navItems = [
-    ['overview','grid','Tổng quan'],
-    ['devices','monitor','Thiết bị'],
-    ['connection','link','Kết nối MCP'],
-    ['activity','activity','Hoạt động'],
-    ['clients','users','Quyền truy cập'],
-    ['security','shield','Bảo mật']
-  ];
-  const current = pendingLink ? 'devices' : (navItems.some(x => x[0] === view) ? view : 'overview');
-  const metrics = [
-    ['Thiết bị online', online, 'devices', 'monitor'],
-    ['Đã ghép nối', list.length, 'devices', 'server'],
-    ['Lượt gọi công cụ', usageTotal, 'activity', 'activity'],
-    ['Ứng dụng OAuth', clients.length, 'clients', 'users']
-  ].map(([label,value,link,icon]) => '<a class="metric" href="/dashboard?view=' + link + '"><span class="metric-top"><span class="metric-label">' + esc(label) + '</span>' + ico(icon) + '</span><strong class="metric-num">' + fmt(value) + '</strong><span class="metric-foot">Xem chi tiết ' + ico('arrow') + '</span></a>').join('');
-  const deviceItems = list.length ? list.map(deviceRow).join('') : '<p class="empty">Chưa có thiết bị. Chọn Thêm thiết bị để bắt đầu.</p>';
-  const activityItems = activities.length ? activities.slice(0, 12).map(activityRow).join('') : '<li class="empty">Chưa có hoạt động nào.</li>';
-  const clientItems = clients.length ? clients.map(clientRow).join('') : '<li class="empty">Chưa có ứng dụng nào được cấp quyền.</li>';
-  const previews = list.slice(0, 3).map(d => '<div class="overview-device"><span class="status-dot ' + (d.online ? 'is-online' : '') + '"></span><span class="overview-device-name">' + esc(d.displayName || d.alias) + '</span><span class="overview-device-state">' + (d.online ? 'Trực tuyến' : 'Ngoại tuyến') + '</span></div>').join('') || '<p class="empty">Chưa ghép nối thiết bị.</p>';
-  const recent = activities.slice(0, 5).map(activityRow).join('') || '<li class="empty">Chưa có hoạt động.</li>';
-  const issued = pendingLink ? '<section class="panel issued" role="status" aria-label="Thông tin ghép nối"><h2>Liên kết ghép nối đã tạo</h2><p><strong>' + esc(pendingLink.displayName) + '</strong> · Liên kết chỉ hiển thị một lần, hãy giữ riêng tư.</p><label>Liên kết ghép nối</label><div class="secret">' + esc(pendingLink.url) + '</div><label>Lệnh cài đặt trên máy tính</label><div class="secret">' + esc(pendingLink.command) + '</div><p>Sao chép và chạy trên thiết bị cần kết nối.</p></section>' : '';
-  const pageView = (id, title, description, body) => current !== id ? '' : '<section class="console-view" id="view-' + id + '" data-view="' + id + '"><div class="page-head"><div><p class="page-kicker">KARIS CONTROL / ' + esc(navItems.find(x=>x[0]===id)?.[2] || title) + '</p><h1>' + esc(title) + '</h1><p class="muted">' + esc(description) + '</p></div></div>' + body + '</section>';
-  const panelHeading = (title, description, link, label) => '<div class="panel-title"><div><h2>' + title + '</h2><p class="muted">' + description + '</p></div>' + (link ? '<a class="text-link" href="/dashboard?view=' + link + '">' + label + ' ' + ico('arrow') + '</a>' : '') + '</div>';
-  const sidebar = '<aside class="sidebar">' + brand() + '<nav aria-label="Điều hướng chính"><p class="nav-group-label">QUẢN TRỊ</p><div class="nav">' + navItems.map(([id,icon,label]) => '<a href="/dashboard?view=' + id + '" data-page-nav="' + id + '"' + (id === current ? ' class="active" aria-current="page"' : '') + '>' + ico(icon) + esc(label) + '</a>').join('') + '</div></nav><div class="sidebar-bottom"><div class="sidebar-status"><span class="status-dot is-online"></span><span>Self-hosted relay</span></div><span class="sidebar-caption">Kết nối bảo mật</span></div></aside>';
-  const top = '<header class="topbar"><div class="topbar-title"><span class="topbar-icon">' + ico('grid') + '</span><strong>Control Center</strong><span class="topbar-separator">/</span><span>Workspace</span></div><div class="topbar-right"><span class="relay-indicator"><span class="status-dot is-online"></span> Relay hoạt động</span><form method="post" action="/dashboard/logout"><button type="submit" class="ghost logout">' + ico('logout') + ' Đăng xuất</button></form></div></header>';
-  const overview = pageView('overview','Tổng quan','Trạng thái hệ thống và lối tắt đến các tác vụ quan trọng.',
-    '<div class="overview-intro"><div><span class="overview-eyebrow">HỆ THỐNG ĐANG HOẠT ĐỘNG</span><h2>Quản lý thiết bị trong một nơi.</h2><p>' + fmt(online) + ' / ' + fmt(list.length) + ' thiết bị đang kết nối với relay.</p></div><a class="primary-link" href="/dashboard?view=devices">' + ico('plus') + ' Quản lý thiết bị</a></div>' +
-    '<div class="metrics">' + metrics + '</div><div class="overview-grid"><section class="panel">' + panelHeading('Thiết bị','Tình trạng ghép nối gần đây.','devices','Xem tất cả') + '<div class="overview-devices">' + previews + '</div></section>' +
-    '<section class="panel">' + panelHeading('Hoạt động gần đây','Không lưu nội dung lệnh hay tập tin.','activity','Xem lịch sử') + '<ul class="list-reset activity-list">' + recent + '</ul></section></div>' +
-    '<div class="quick-links"><a href="/dashboard?view=connection">' + ico('link') + '<span><strong>Kết nối AI client</strong><small>Endpoint MCP và OAuth</small></span>' + ico('arrow') + '</a><a href="/dashboard?view=clients">' + ico('users') + '<span><strong>Ứng dụng đã cấp quyền</strong><small>Xem và thu hồi OAuth</small></span>' + ico('arrow') + '</a></div>');
-  const devicesPage = pageView('devices','Thiết bị','Xem thiết bị kết nối, đổi máy mặc định và tạo liên kết ghép nối.',
-    issued + '<section class="panel compact-panel">' + panelHeading('Thêm thiết bị','Ghép nối máy Windows, macOS, Linux hoặc VPS.') +
-    '<form method="post" action="/dashboard/devices/new" class="form-stack pair-form"><label for="device-name">Tên thiết bị<input id="device-name" name="displayName" maxlength="40" placeholder="Ví dụ: PC làm việc" required></label>' +
-    '<label for="device-alias">Alias công cụ<input id="device-alias" name="alias" maxlength="24" placeholder="pc_lam_viec" pattern="[A-Za-z0-9_-]*" title="Chữ, số, gạch ngang hoặc gạch dưới"></label>' +
-    '<button type="submit">' + ico('plus') + ' Tạo liên kết</button></form></section>' +
-    '<section class="panel">' + panelHeading('Danh sách thiết bị',fmt(list.length) + ' / ' + fmt(maxDevices) + ' thiết bị đã ghép nối.') + '<div class="device-list">' + deviceItems + '</div></section>');
-  const connectionPage = pageView('connection','Kết nối MCP','Dùng địa chỉ riêng tư này để thêm remote MCP vào ứng dụng AI.',
-    '<section class="panel connection-card"><div class="section-icon">' + ico('link') + '</div><h2>Remote MCP endpoint</h2><p class="muted">Sử dụng với ChatGPT, Cursor hoặc VS Code. Ứng dụng sẽ yêu cầu OAuth khi kết nối.</p>' +
-    '<label class="field-label" for="mcp-endpoint">Địa chỉ máy chủ</label><div class="endpoint-control"><input class="copy-field" id="mcp-endpoint" readonly value="' + esc(endpoint) + '" aria-label="Địa chỉ MCP endpoint"></div><p class="help">Chọn địa chỉ và nhấn Ctrl+C để sao chép. Ứng dụng AI vẫn yêu cầu xác thực OAuth.</p></section>' +
-    '<section class="panel steps-panel"><h2>Các bước kết nối</h2><ol><li>Mở cài đặt MCP hoặc Connectors trong ứng dụng AI.</li><li>Thêm remote MCP và dán endpoint phía trên.</li><li>Hoàn tất OAuth; sau đó kiểm tra thiết bị trong mục Thiết bị.</li></ol></section>');
-  const activityPage = pageView('activity','Hoạt động','Theo dõi các lượt gọi công cụ và trạng thái xử lý.',
-    '<section class="panel">' + panelHeading('Nhật ký gần đây','Chỉ lưu tên tác vụ, thiết bị, trạng thái và thời lượng.') + '<div class="list-total">' + fmt(usageTotal) + ' lượt gọi tổng cộng</div><ul class="list-reset activity-list">' + activityItems + '</ul></section>');
-  const clientsPage = pageView('clients','Quyền truy cập','Xem các ứng dụng đã được cấp quyền truy cập OAuth.',
-    '<section class="panel">' + panelHeading('Ứng dụng đã cấp quyền','Chỉ thu hồi ứng dụng bạn không còn sử dụng.') + '<ul class="list-reset client-list">' + clientItems + '</ul></section>');
-  const securityPage = pageView('security','Bảo mật','Quản lý thao tác nhạy cảm và quyền của các thiết bị đã ghép nối.',
-    '<section class="panel security-advice"><div class="section-icon">' + ico('shield') + '</div><h2>Quyền truy cập của bạn</h2><p>Liên kết ghép nối là bí mật. Không gửi cho người khác và chỉ cấp quyền cho thiết bị đáng tin cậy.</p><p class="muted">Để thu hồi một thiết bị cụ thể, vào mục Thiết bị → Quản lý.</p></section>' +
-    '<section class="panel critical-panel"><h2>Thao tác nguy hiểm</h2><p class="muted">Thu hồi toàn bộ thiết bị cũng sẽ ngắt agent VPS đang phục vụ relay này.</p><details class="safety-zone"><summary>Hiện tùy chọn thu hồi toàn bộ thiết bị ' + ico('chevron') + '</summary><div><form method="post" action="/dashboard/devices/revoke-all"><label class="confirm-label"><input type="checkbox" name="confirm" value="yes" required> Tôi hiểu tất cả thiết bị sẽ bị ngắt</label><button type="submit" class="danger">Thu hồi toàn bộ thiết bị</button></form></div></details></section>');
-  const all = '<main class="workspace">' + (message ? '<div class="notice" role="status">' + esc(message) + '</div>' : '') + overview + devicesPage + connectionPage + activityPage + clientsPage + securityPage + '<footer class="footer">Karis Control · Self-hosted MCP</footer></main>';
-  const html = page('Dashboard · Karis Control', 'dashboard-body', '<div class="app-shell">' + sidebar + '<div class="main-wrap">' + top + all + '</div></div>');
-  const field = '<input type="hidden" name="_csrf" value="' + esc(csrfToken || '') + '">';
-  return html.replace(/<form\b[^>]*>/g, x => x + field);
+
+export function renderConsoleView({ list, clients, activities, usageTotal, maxDevices, endpoint, pendingLink, message, csrfToken, view = 'overview' }) {
+  const online = list.filter(d => d.online).length;
+  const valid = ['overview','activity','clients','security','devices','connection'];
+  const current = valid.includes(view) ? view : 'overview';
+  const nav = [['overview','grid','Tổng quan'],['activity','activity','Hoạt động'],['clients','users','Quyền truy cập'],['security','shield','Bảo mật']];
+  const csrf = '<input type="hidden" name="_csrf" value="' + esc(csrfToken || '') + '">';
+  const postForm = (url, content, className = '') => '<form method="post" action="' + url + '" class="' + className + '">' + csrf + content + '</form>';
+  const button = (name, icon, dialog, cls='button') => '<button type="button" class="' + cls + '" data-open-dialog="' + dialog + '">' + ico(icon) + name + '</button>';
+  const status = d => '<span class="status-badge ' + (d.online ? 'connected' : 'disconnected') + '"><span class="status-dot ' + (d.online ? 'is-online' : '') + '"></span>' + (d.online ? 'Trực tuyến' : 'Ngoại tuyến') + '</span>';
+  const platform = d => /win/i.test(d.platform) ? 'monitor' : /mac|darwin/i.test(d.platform) ? 'laptop' : /linux/i.test(d.platform) ? 'server' : 'globe';
+  const platformLabel = d => /win/i.test(d.platform) ? 'Windows' : /mac|darwin/i.test(d.platform) ? 'macOS' : /linux/i.test(d.platform) ? 'Linux / VPS' : 'Thiết bị';
+  const deviceTile = (d, full = false) => {
+    const id = encodeURIComponent(d.id);
+    const actions = full ?
+      '<div class="device-tools">' +
+        (d.isDefault ? '<span class="default-label">' + ico('shield') + ' Mặc định</span>' : postForm('/dashboard/devices/'+id+'/default','<button type="submit" class="button subtle">Đặt mặc định</button>')) +
+        '<details class="device-more"><summary class="button subtle">Tùy chọn ' + ico('chevron') + '</summary><div class="device-options">' +
+        (d.protected ? '<p>Đây là thiết bị vận hành hệ thống. Đổi khóa hoặc thu hồi sẽ ngắt kết nối của nó.</p>' : '') +
+        postForm('/dashboard/devices/'+id+'/rotate','<button type="submit" class="button subtle">Tạo lại khóa ghép nối</button>') +
+        '<details class="danger-option"><summary>Thu hồi thiết bị</summary>' +
+        postForm('/dashboard/devices/'+id+'/revoke','<label class="confirm-label"><input type="checkbox" required> Tôi hiểu thiết bị sẽ mất kết nối</label><button type="submit" class="button danger">Xác nhận thu hồi</button>') +
+        '</details></div></details></div>' :
+      '<button type="button" class="button subtle manage-button" data-open-dialog="devices-dialog" data-device-focus="' + esc(d.id) + '">Quản lý ' + ico('arrow') + '</button>';
+    return '<article class="device-tile" data-device-id="' + esc(d.id) + '"><span class="device-icon">' + ico(platform(d)) + '</span><div class="device-info"><strong>' + esc(d.displayName || d.alias) + '</strong><span class="device-sub">' + esc(platformLabel(d)) + (d.isDefault ? ' · Mặc định' : '') + '</span></div><div class="device-connect">' + status(d) + '</div>' + actions + '</article>';
+  };
+  const devicePreview = list.slice(0,4).map(d => deviceTile(d)).join('') || '<div class="empty">Chưa có thiết bị. Thêm thiết bị để bắt đầu.</div>';
+  const allDevices = list.map(d => deviceTile(d,true)).join('') || '<div class="empty">Chưa có thiết bị nào.</div>';
+  const activitiesRows = rows => (rows.length ? rows.map(a => {
+    const ok = a.status === 'ok' || a.status === 'success';
+    const ms = Number.isFinite(Number(a.durationMs)) ? fmt(a.durationMs) + ' ms' : '—';
+    return '<li class="activity-row"><span class="activity-symbol">' + ico(ok?'activity':'shield') + '</span><span class="activity-copy"><strong>' + esc(a.tool || 'Tác vụ') + '</strong><small>' + esc(a.device || 'relay') + ' · ' + (ok?'Thành công':esc(a.status || 'Lỗi')) + '</small></span><time>' + esc(ms) + '</time></li>';
+  }).join('') : '<li class="empty">Chưa có hoạt động gần đây.</li>');
+  const clientsRows = clients.length ? clients.map(c => {
+    const id=String(c.client_id || '');
+    return '<li class="client-row"><span class="client-icon">' + ico('link') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong><small>ID ' + esc(id.slice(0, 12)) + '…</small></div><details><summary class="button subtle">Thu hồi</summary>' +
+    postForm('/dashboard/clients/'+encodeURIComponent(id)+'/revoke','<label class="confirm-label"><input type="checkbox" required> Xác nhận thu hồi OAuth</label><button type="submit" class="button danger">Thu hồi quyền</button>') + '</details></li>';
+  }).join('') : '<li class="empty">Chưa cấp quyền cho ứng dụng nào.</li>';
+  const modal = (id,title,body,wide=false,extra='') => '<dialog id="' + id + '" class="control-dialog' + (wide ? ' wide' : '') + '"' + extra + ' aria-labelledby="' + id + '-title"><div class="dialog-head"><h2 id="' + id + '-title">' + title + '</h2><button type="button" class="icon-button" data-close-dialog aria-label="Đóng cửa sổ">' + ico('plus') + '</button></div><div class="dialog-body">' + body + '</div></dialog>';
+  const addForm = '<p class="dialog-lead">Đặt tên dễ nhận biết cho thiết bị mới.</p>' +
+    postForm('/dashboard/devices/new',
+      '<label>Tên thiết bị<input id="device-name" name="displayName" maxlength="40" placeholder="Ví dụ: PC làm việc" required></label>' +
+      '<label>Alias (không bắt buộc)<input id="device-alias" name="alias" maxlength="24" placeholder="pc_lam_viec" pattern="[A-Za-z0-9_-]*"></label>' +
+      '<button type="submit" class="button primary block">' + ico('plus') + ' Tạo liên kết ghép nối</button>', 'pair-form');
+  const issued = pendingLink ? modal('pair-result-dialog','Kết nối thiết bị: ' + esc(pendingLink.displayName),
+    '<p class="dialog-lead">Liên kết chỉ hiển thị một lần. Không chia sẻ cho người khác.</p>' +
+    '<label class="copy-label">Liên kết ghép nối</label><div class="secret-value">' + esc(pendingLink.url) + '</div>' +
+    '<label class="copy-label">Lệnh chạy trên thiết bị</label><div class="secret-value">' + esc(pendingLink.command) + '</div>' +
+    '<p class="dialog-lead">Sao chép lệnh và chạy trên thiết bị mới.</p>',true,' data-auto-open') : '';
+  const sidebar = '<aside class="sidebar">' + brand() + '<nav aria-label="Điều hướng chính"><div class="nav">' +
+    nav.map(([id,ic,label]) => '<a href="/dashboard?view=' + id + '" data-page-nav="' + id + '"' + ((id===current || (['devices','connection'].includes(current)&&id==='overview'))?' class="active" aria-current="page"':'') + '>' + ico(ic) + '<span>' + label + '</span></a>').join('') +
+    '</div></nav><div class="sidebar-footer"><span class="status-dot is-online"></span> Self-hosted MCP</div></aside>';
+  const top = '<header class="topbar"><strong class="topbar-heading">Karis Control</strong><div class="topbar-right"><span id="live-health" class="health-state"><span class="status-dot is-online"></span><span>Đang cập nhật trực tiếp</span></span>' +
+    postForm('/dashboard/logout','<button class="button subtle signout" type="submit">' + ico('logout') + '<span>Đăng xuất</span></button>') + '</div></header>';
+  const metrics = '<div class="metrics" data-live-region="metrics">' +
+    [['Trực tuyến',online,'monitor'],['Thiết bị',list.length,'server'],['Lượt gọi',usageTotal,'activity'],['Ứng dụng',clients.length,'users']].map(([name,n,ic]) =>
+      '<div class="metric"><span>' + ico(ic) + esc(name) + '</span><strong>' + fmt(n) + '</strong></div>').join('') + '</div>';
+  const overview = '<section class="console-view" data-view="overview"><div class="page-head"><div><h1>Tổng quan</h1><p>Thiết bị và kết nối MCP của bạn</p></div>' + button('Thêm thiết bị','plus','add-device-dialog','button primary add-trigger') + '</div>' +
+    metrics + '<div class="overview-grid"><section class="panel devices-panel"><div class="panel-head"><h2>Thiết bị <span class="section-count" data-device-total>' + fmt(list.length) + '</span></h2><div class="panel-actions">' +
+    button('Thêm','plus','add-device-dialog','button subtle') +
+    button('Xem tất cả','arrow','devices-dialog','button text-action') + '</div></div><div class="device-list" data-live-region="preview-devices">' + devicePreview + '</div></section>' +
+    '<section class="panel mcp-panel"><div class="panel-head"><h2>' + ico('link') + ' Kết nối MCP</h2></div><p>Địa chỉ kết nối với ChatGPT, Cursor, VS Code.</p>' +
+    '<label for="mcp-endpoint">MCP Endpoint</label><div class="endpoint-control"><input id="mcp-endpoint" class="copy-field" value="' + esc(endpoint) + '" readonly aria-label="Địa chỉ máy chủ MCP"><button type="button" class="button subtle" data-copy-target="mcp-endpoint">' + ico('arrow') + ' Sao chép</button></div>' +
+    '<div class="mcp-note">' + ico('shield') + '<span>OAuth bảo vệ kết nối</span></div></section></div>' +
+    '<section class="panel recent-panel"><div class="panel-head"><h2>Hoạt động gần đây</h2><a class="button text-action" href="/dashboard?view=activity">Xem chi tiết ' + ico('arrow') + '</a></div>' +
+    '<ul class="activity-list" data-live-region="recent-activities">' + activitiesRows(activities.slice(0,4)) + '</ul></section></section>';
+  const viewPage = (key,title,body) => '<section class="console-view" data-view="' + key + '"><div class="page-head"><h1>' + title + '</h1></div>' + body + '</section>';
+  const activityPage = viewPage('activity','Hoạt động','<div class="panel"><div class="panel-head"><h2>Lịch sử gần đây</h2></div><ul class="activity-list" data-live-region="activity-list">' + activitiesRows(activities.slice(0,20)) + '</ul></div>');
+  const clientsPage = viewPage('clients','Quyền truy cập','<div class="panel"><div class="panel-head"><h2>Ứng dụng được cấp quyền</h2></div><ul class="client-list" data-live-region="client-list">' + clientsRows + '</ul></div>');
+  const securityPage = viewPage('security','Bảo mật','<div class="panel security-panel"><h2>Bảo vệ kết nối</h2><p>Chỉ chia sẻ khóa ghép nối với thiết bị bạn tin tưởng. Thu hồi quyền có thể ngắt thiết bị đang chạy.</p><details class="danger-option"><summary class="button subtle">Thao tác nguy hiểm ' + ico('chevron') + '</summary>' +
+    postForm('/dashboard/devices/revoke-all','<label class="confirm-label"><input type="checkbox" name="confirm" value="yes" required> Tôi hiểu mọi thiết bị sẽ bị ngắt</label><button type="submit" class="button danger">Thu hồi toàn bộ thiết bị</button>') + '</details></div>');
+  // Keep old deep links functional; navigation now prioritizes user-requested overview dialogs.
+  const devicePage = viewPage('devices','Thiết bị', '<div class="panel"><div class="panel-head"><h2>Quản lý thiết bị</h2>' + button('Thêm thiết bị','plus','add-device-dialog','button primary') + '</div><div class="device-list" data-live-region="device-full-list">' + allDevices + '</div></div>');
+  const connectionPage = viewPage('connection','Kết nối MCP','<div class="panel mcp-panel"><h2>Địa chỉ MCP</h2><input class="copy-field" id="mcp-secondary" readonly value="' + esc(endpoint) + '"><button type="button" class="button subtle" data-copy-target="mcp-secondary">Sao chép</button></div>');
+  const views = {overview,activity:activityPage,clients:clientsPage,security:securityPage,devices:devicePage,connection:connectionPage};
+  const dialogs = modal('add-device-dialog','Thêm thiết bị',addForm) +
+    modal('devices-dialog','Quản lý thiết bị','<div class="dialog-list" data-live-region="modal-device-list">' + allDevices + '</div>',true) + issued;
+  const content = '<div class="app-shell">' + sidebar + '<div class="main-wrap">' + top + '<main class="workspace">' +
+    (message?'<div class="notice" role="status">'+esc(message)+'</div>':'') + views[current] +
+    '</main></div></div>' + dialogs + '<span id="copy-status" class="sr-only" role="status" aria-live="polite"></span>' +
+    '<script src="/dashboard/ui.js" defer></script>';
+  return page('Karis Control · ' + current, 'dashboard-body', content);
 }

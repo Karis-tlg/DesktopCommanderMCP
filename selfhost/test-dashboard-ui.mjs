@@ -72,47 +72,83 @@ try {
   await page.type('#admin-password',admin);
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('.login-form button')]);
   assert((await page.content()).includes('data-view="overview"'),'dashboard did not render');
-  const desktop=await page.evaluate(()=>({title:document.title,bodyWidth:document.body.scrollWidth,viewport:window.innerWidth,devices:document.querySelectorAll('.device-row').length,forms:document.querySelectorAll('form').length,mainText:document.querySelector('h1')?.innerText}));
-  assert(desktop.bodyWidth<=desktop.viewport+2,'desktop horizontal overflow: '+JSON.stringify(desktop));
-  assert.equal(desktop.devices,0,'overview must not render the full device management list');
-  const csrfState=await page.evaluate(()=>({forms:document.querySelectorAll('form').length,all:[...document.querySelectorAll('form')].every(form=>!!form.querySelector('input[name="_csrf"]'))}));
-  assert(csrfState.forms>=1 && csrfState.all,'all forms must include CSRF: '+JSON.stringify(csrfState));
-  const routes=['devices','connection','activity','clients','security','overview'];
-  for (const route of routes) {
+  await page.waitForFunction(()=>document.querySelector('#live-health')?.textContent.includes('Trực tiếp'),{timeout:10000});
+  const desktop=await page.evaluate(()=>({
+    width:document.body.scrollWidth,viewport:innerWidth,
+    theme:getComputedStyle(document.body).backgroundColor,
+    visibleDevices:document.querySelectorAll('[data-live-region="preview-devices"] .device-tile').length,
+    scripts:[...document.scripts].map(x=>x.src),forms:[...document.forms].every(x=>!!x.querySelector('[name="_csrf"]'))
+  }));
+  assert(desktop.width<=desktop.viewport+2,'desktop overflow');
+  assert.equal(desktop.visibleDevices,3);
+  assert(desktop.theme.startsWith('rgb(11, 16, 23)'),'not dark mode: '+desktop.theme);
+  assert(desktop.scripts.length===1 && desktop.scripts[0].endsWith('/dashboard/ui.js'),'must use same-origin script');
+  assert(desktop.forms,'CSRF missing');
+
+  await page.click('.add-trigger');
+  assert(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open),'add-device must open modal');
+  assert(await page.$('#add-device-dialog input[name="displayName"]'),'new device field missing');
+  await page.keyboard.press('Escape');
+  assert(!(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open)),'escape must close modal');
+
+  await page.click('[data-live-region="preview-devices"] [data-open-dialog="devices-dialog"]');
+  assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'quick manage must open full device modal');
+  assert.equal((await page.$$('#devices-dialog .device-tile')).length,3);
+  await page.keyboard.press('Escape');
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'see-all must open devices modal');
+  await page.keyboard.press('Escape');
+
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-desktop.png'),fullPage:true});
+
+  for (const route of ['activity','clients','security','overview']) {
     await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('[data-page-nav="'+route+'"]')]);
     const state=await page.evaluate(()=>({
       views:[...document.querySelectorAll('[data-view]')].map(x=>x.dataset.view),
       active:document.querySelector('[aria-current="page"]')?.dataset.pageNav,
       urlView:new URL(location.href).searchParams.get('view'),
-      deviceRows:document.querySelectorAll('.device-row').length,
-      forms:[...document.querySelectorAll('form')].every(form=>!!form.querySelector('input[name="_csrf"]')),
-      scripts:document.scripts.length,
-      width:document.body.scrollWidth,viewport:innerWidth
+      width:document.body.scrollWidth,viewport:innerWidth,
+      forms:[...document.forms].every(form=>!!form.querySelector('[name="_csrf"]'))
     }));
-    assert.deepEqual(state.views,[route],'only one server-rendered view at a time: '+route);
-    assert.equal(state.active,route,'sidebar aria-current: '+route);
-    assert.equal(state.urlView,route,'shareable page URL: '+route);
-    assert(state.forms,'CSRF in every form on '+route);
-    assert.equal(state.scripts,0,'CSP-safe dashboard should not need inline scripts');
-    assert(state.width<=state.viewport+2,'horizontal overflow on '+route);
-    if(route==='devices')assert.equal(state.deviceRows,3,'all paired devices visible in Devices');
+    assert.deepEqual(state.views,[route]);
+    assert.equal(state.active,route);
+    assert.equal(state.urlView,route);
+    assert(state.forms && state.width<=state.viewport+2,'invalid '+route+' view');
   }
-  await page.screenshot({path:path.join(artifacts,'karis-dashboard-desktop.png'),fullPage:true});
-  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
-  await page.reload({waitUntil:'domcontentloaded'});
-  const mobile=await page.evaluate(()=>({bodyWidth:document.body.scrollWidth,viewport:window.innerWidth,nav:document.querySelector('.nav').scrollWidth}));
-  assert(mobile.bodyWidth<=mobile.viewport+2,'mobile horizontal overflow: '+JSON.stringify(mobile));
-  for (const route of ['devices','connection','activity','clients','security']) {
+  for (const route of ['devices','connection']) {
     await page.goto(root+'/dashboard?view='+route,{waitUntil:'domcontentloaded'});
-    const state=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:window.innerWidth,views:[...document.querySelectorAll('[data-view]')].map(x=>x.dataset.view)}));
-    assert(state.width<=state.viewport+2,'mobile overflow in '+route+': '+JSON.stringify(state));
-    assert.deepEqual(state.views,[route],'mobile route mismatch: '+route);
+    assert((await page.content()).includes('data-view="'+route+'"'),'backward-compatible '+route);
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>document.querySelector('#live-health')?.textContent.includes('Trực tiếp'),{timeout:10000});
+  sockets[1].close(1000,'realtime UI verification');
+  await page.waitForFunction(()=>document.querySelector('[data-live-region="metrics"] .metric strong')?.textContent==='1',{timeout:15000});
+  assert((await page.$eval('[data-live-region="preview-devices"]',el=>el.textContent)).includes('Ngoại tuyến'),'SSE did not refresh device status');
+  const unauthScript=await fetch(root+'/dashboard/ui.js');
+  const unauthEvents=await fetch(root+'/dashboard/events');
+  assert.equal(unauthScript.status,401);
+  assert.equal(unauthEvents.status,401);
+  await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+  await page.reload({waitUntil:'domcontentloaded'});
+  const mobile=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:innerWidth,deviceTiles:document.querySelectorAll('[data-live-region="preview-devices"] .device-tile').length}));
+  assert(mobile.width<=mobile.viewport+2,'mobile horizontal overflow: '+JSON.stringify(mobile));
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-mobile.png'),fullPage:true});
+  for (const route of ['activity','clients','security']) {
+    await page.goto(root+'/dashboard?view='+route,{waitUntil:'domcontentloaded'});
+    const state=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:innerWidth}));
+    assert(state.width<=state.viewport+2,'mobile overflow '+route);
+  }
+  await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
+  await page.click('.add-trigger');
+  await page.type('#device-name','Laptop thử nghiệm');
+  await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('#add-device-dialog .pair-form button[type="submit"]')]);
+  assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'new device pairing must auto-open one-time result modal');
+  assert((await page.$eval('#pair-result-dialog',e=>e.textContent)).includes('/pair/'),'pairing dialog must contain generated URL');
+  assert((await page.$eval('#pair-result-dialog',e=>e.textContent)).includes('desktop-commander remote'),'pairing dialog must contain actual install command');
   assert.equal(errors.length,0,'browser errors: '+errors.join(';'));
-  console.log('PASS: dashboard login, 6 isolated management pages, 3 demo devices, CSRF, CSP-safe navigation, 1440px desktop and 390px mobile with no page errors/overflow.');
+  console.log('PASS: dark UI, login, 4 tabs, modal add + manage + all devices, CSP, CSRF, SSE device state changes, mobile/desktop, no JS errors/overflow');
   console.log(JSON.stringify({desktop,mobile,screenshots:['karis-dashboard-login.png','karis-dashboard-desktop.png','karis-dashboard-mobile.png']}));
+
 } finally {
   if(browser) await browser.close().catch(()=>{});
   for(const ws of sockets)try{ws.close(1000,'preview cleanup')}catch{}

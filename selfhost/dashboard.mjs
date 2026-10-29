@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { renderLoginView, renderConsoleView } from './dashboard-view.mjs';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const slug = value => String(value || 'device').toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '').slice(0, 24) || 'device';
 const now = () => Math.floor(Date.now() / 1000);
+const dashboardLiveScript = readFileSync(new URL('./dashboard-live.js', import.meta.url), 'utf8');
 
 export function registerDashboard({ app, db, save, adminKey, issuer, devices, onChange, random, digest, equal, maxDevices, failures, agentPackageUrl }) {
   const sessions = new Map();
@@ -109,6 +111,62 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
 
   app.get('/', (_req, res) => res.redirect(302, '/dashboard'));
   app.get('/dashboard', (req, res) => render(req, res));
+
+  // Authenticated, same-origin UI assets. No unsafe-inline JavaScript.
+  app.get('/dashboard/ui.js', (req, res) => {
+    if (!sessionFor(req)) { res.status(401).end(); return; }
+    res.status(200).type('application/javascript').send(dashboardLiveScript);
+  });
+  // A live, authenticated event stream. Only state revision hashes leave this endpoint.
+  // Browsers fetch the existing server-rendered view to update changed panels.
+  const liveStreams = new Map();
+  app.get('/dashboard/events', (req, res) => {
+    const found = sessionFor(req);
+    if (!found) { res.status(401).end(); return; }
+    const count = liveStreams.get(found.key) || 0;
+    if (count >= 8) { res.status(429).end(); return; }
+    liveStreams.set(found.key, count + 1);
+    res.status(200);
+    res.set({
+      'Content-Type':'text/event-stream; charset=utf-8',
+      'Cache-Control':'no-cache, no-transform',
+      'X-Accel-Buffering':'no',
+      'Connection':'keep-alive'
+    });
+    res.flushHeaders();
+    res.write('retry: 3500\n\n');
+    let prior = '', ticks = 0;
+    const push = () => {
+      if (res.writableEnded || res.writableLength > 65536) { res.end(); return; }
+      if (!sessionFor(req)) { res.end(); return; }
+      const state = JSON.stringify({
+        devices: deviceList().map(d => {
+          const live = devices.get(d.id);
+          return [d.id, d.displayName, d.platform, !!live && live.ws?.readyState === 1,
+                  d.lastSeen, (d.tools || []).length, db.defaultDeviceId === d.id];
+        }),
+        calls: Number(db.usage?.totalCalls) || 0,
+        clients: Object.keys(db.clients || {}).sort(),
+        recent: (db.activity || []).slice(0, 20).map(a => [a.tool, a.device, a.status, a.durationMs, a.at])
+      });
+      const revision = digest(state).slice(0, 20);
+      if (revision !== prior) {
+        prior = revision;
+        res.write('event: change\ndata: ' + JSON.stringify({revision}) + '\n\n');
+      }
+      if (++ticks % 10 === 0) res.write('event: heartbeat\ndata: {}\n\n');
+    };
+    const timer = setInterval(push, 2000);
+    const stop = () => {
+      clearInterval(timer);
+      const remaining = (liveStreams.get(found.key) || 1) - 1;
+      if (remaining > 0) liveStreams.set(found.key, remaining);
+      else liveStreams.delete(found.key);
+    };
+    res.once('close', stop);
+    push();
+  });
+
   app.post('/dashboard/login', (req, res) => {
     const ip = req.socket.remoteAddress || 'local';
     const failure = failures.get(ip) || { n: 0, exp: now() + 900 };
@@ -140,7 +198,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     const record = { id, alias, displayName, tokenHash: '', createdAt: now(), lastSeen: null, revokedAt: null, tools: [], platform: 'unknown', agentVersion: null, protected: false, source: 'dashboard' };
     db.devices[id] = record;
     createPair(record, found);
-    res.redirect(303, '/dashboard?view=devices');
+    res.redirect(303, '/dashboard?view=overview');
   });
   app.post('/dashboard/devices/:id/rotate', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
@@ -148,7 +206,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     if (!record || record.revokedAt) { render(req, res, 'Unknown or revoked device.'); return; }
     const live = devices.get(record.id); if (live) live.ws.close(4001, 'Pairing key rotated');
     const token = random(); record.tokenHash = digest(token); record.revokedAt = null; record.updatedAt = now();
-    issuePair(found, record, token); save(); onChange(); res.redirect(303, '/dashboard?view=devices');
+    issuePair(found, record, token); save(); onChange(); res.redirect(303, '/dashboard?view=overview');
   });
   app.post('/dashboard/devices/:id/revoke', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
@@ -157,7 +215,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     record.revokedAt = now();
     if (db.defaultDeviceId === record.id) db.defaultDeviceId = deviceList().find(d => d.id !== record.id)?.id || '';
     const live = devices.get(record.id); if (live) live.ws.close(4003, 'Device revoked');
-    save(); onChange(); res.redirect(303, '/dashboard?view=devices');
+    save(); onChange(); res.redirect(303, '/dashboard?view=overview');
   });
   app.post('/dashboard/devices/revoke-all', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
@@ -173,7 +231,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     const found = requireSession(req, res); if (!found) return;
     const record = db.devices[req.params.id];
     if (!record || record.revokedAt) { render(req, res, 'Unknown or revoked device.'); return; }
-    db.defaultDeviceId = record.id; save(); onChange(); res.redirect(303, '/dashboard?view=devices');
+    db.defaultDeviceId = record.id; save(); onChange(); res.redirect(303, '/dashboard?view=overview');
   });
   app.post('/dashboard/clients/:id/revoke', (req, res) => {
     const found = requireSession(req, res); if (!found) return;

@@ -345,7 +345,7 @@ try {
   assert.equal(stats.quota, 'none');
   assert(stats.totalToolCalls >= 4);
   const dashboardAfterCalls = await (await fetch(root + '/dashboard?view=activity', { headers: { Cookie: cookie } })).text();
-  assert(dashboardAfterCalls.includes('Nhật ký gần đây'));
+  assert(dashboardAfterCalls.includes('Lịch sử gần đây'));
   assert(dashboardAfterCalls.includes('probe'));
   const overviewAfterCalls = await (await fetch(root + '/dashboard?view=overview', { headers: { Cookie: cookie } })).text();
   assert(overviewAfterCalls.includes('Hoạt động gần đây'));
