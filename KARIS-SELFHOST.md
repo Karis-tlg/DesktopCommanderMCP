@@ -2,7 +2,9 @@
 
 This fork keeps the MIT-licensed Desktop Commander local MCP tools and adds an independently implemented self-hosted remote MCP relay, per-device agent credentials, OAuth, and an admin dashboard. The hosted Remote Desktop Commander backend is proprietary; this project implements documented public workflows rather than copying its closed implementation.
 
-## Current feature set in source/release v0.3.4-karis.0
+Current self-host patch release: [selfhost-v0.3.4-karis.1](https://github.com/Karis-tlg/DesktopCommanderMCP/releases/tag/selfhost-v0.3.4-karis.1). The older tag `v0.3.4-karis.1` is deprecated because it points to an upstream commit that does not include this self-host patch.
+
+## Current feature set in source/patch release selfhost-v0.3.4-karis.1
 
 - One Streamable HTTP MCP endpoint at `/mcp`, protected by OAuth 2.0 authorization-code + PKCE, dynamic client registration, refresh/revoke, and protected-resource metadata.
 - Admin panel at `/dashboard`: admin sign-in, add device, per-device pairing link, choose default device, online/offline and last-seen status, rotate/revoke device, revoke all devices, and revoke individual OAuth clients.
