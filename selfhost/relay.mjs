@@ -39,6 +39,8 @@ if (!Number.isFinite(db.usage.totalCalls)) db.usage.totalCalls = 0;
 if (!db.usage.byDevice || typeof db.usage.byDevice !== 'object') db.usage.byDevice = {};
 if (!db.usage.byTool || typeof db.usage.byTool !== 'object') db.usage.byTool = {};
 if (!db.defaultDeviceId) db.defaultDeviceId = 'vps';
+// In-flight approvals survive a relay restart, but remain short-lived and one-use.
+if (!db.pendingAuthorizations || typeof db.pendingAuthorizations !== 'object' || Array.isArray(db.pendingAuthorizations)) db.pendingAuthorizations = {};
 const save = () => { const dir=path.dirname(dbPath); fs.mkdirSync(dir,{recursive:true,mode:0o700}); const f=dbPath+'.'+process.pid+'.tmp'; fs.writeFileSync(f,JSON.stringify(db),{mode:0o600,flag:'wx'}); fs.renameSync(f,dbPath); };
 const cleanup = () => {
   for (const col of ['codes','access','refresh'])
@@ -62,7 +64,10 @@ const issue = (clientId, scopes=['mcp']) => {
   save();
   return { access_token:a, refresh_token:r, token_type:'Bearer', expires_in:3600, scope:scopes.join(' ') };
 };
-const pending = new Map();
+const pending = new Map(Object.entries(db.pendingAuthorizations).filter(([, entry]) =>
+  entry && typeof entry.clientId === 'string' && db.clients[entry.clientId] &&
+  entry.exp > now() && entry.params && typeof entry.params.redirectUri === 'string'));
+const savePending = () => { db.pendingAuthorizations = Object.fromEntries(pending); save(); };
 const clientsStore = {
  getClient: async id => db.clients[id],
  registerClient: async client => {
@@ -83,13 +88,15 @@ const provider = {
    if(!expectedResource(params.resource) || (params.scopes||[]).some(scope=>scope!=='mcp')) {res.status(400).send('Invalid OAuth resource or scope');return;}
    // Same browser retry should reuse an existing authorization request, not
    // create a fresh pending entry every time the client retries the same state.
-   for (const [key,entry] of pending) if(entry.exp<=now()) pending.delete(key);
+   let changed=false;
+   for (const [key,entry] of pending) if(entry.exp<=now() || !db.clients[entry.clientId]) {pending.delete(key);changed=true;}
+   if(changed) savePending();
    const fingerprint = JSON.stringify([client.client_id,params.redirectUri,params.state,
       params.codeChallenge,params.resource?.toString(),params.scopes]);
    const reused=[...pending].find(([,entry])=>entry.fingerprint===fingerprint);
    if (pending.size>=32 && !reused) {res.status(429).send('Too many pending approvals. Please retry shortly.');return;}
    const id=reused ? reused[0] : random();
-   if(!reused) pending.set(id,{clientId:client.client_id,params,exp:now()+600,fingerprint});
+   if(!reused) {pending.set(id,{clientId:client.client_id,params,exp:now()+600,fingerprint});savePending();}
    const name=esc(client.client_name||'Unnamed MCP client');
    res.status(200).type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Authorize Karis MCP</title><style>body{font:16px system-ui;max-width:440px;margin:12vh auto;padding:24px;background:#101820;color:#fff}input,button{font:inherit;padding:12px;margin-top:12px;width:100%;box-sizing:border-box}button{background:#15803d;color:white;border:0;border-radius:6px}small{color:#aaa}</style><h2>Authorize ${name}</h2><p>This application requests access to file and terminal MCP tools. Approval requires an online device that responds to a live ping.</p><small>Only approve a client you trust. This grants powerful device access.</small><form action="/approve" method="post"><input type="hidden" name="request" value="${id}"><label>Admin approval password<input type="password" name="password" autocomplete="off" required></label><button type="submit">Authorize for 30 days</button></form>`);
  },
@@ -120,8 +127,8 @@ app.post('/approve', async (req,res)=>{
  const ip=req.socket.remoteAddress||'local', f=failures.get(ip)||{n:0,exp:now()+900};if(f.exp<now()){f.n=0;f.exp=now()+900;}
  if(f.n>=8){res.status(429).send('Too many attempts');return;}
  const id=String(req.body?.request||''), entry=pending.get(id);
- if(!entry || entry.exp<=now()){
-   pending.delete(id);
+ if(!entry || entry.exp<=now() || !db.clients[entry.clientId]){
+   if(pending.delete(id))savePending();
    res.status(410).type('html').send('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Yêu cầu xác nhận đã hết hạn</title><style>body{font:16px system-ui;background:#101820;color:#f5f7fa;max-width:550px;margin:10vh auto;padding:25px}a{color:#8bd4ee}</style><h1>Yêu cầu đã hết hạn</h1><p>Chưa cấp quyền cho ứng dụng. Hãy quay lại ChatGPT hoặc ứng dụng MCP, chọn kết nối lại để tạo yêu cầu mới. Không cần tạo thêm thiết bị.</p><p><a href="/dashboard?view=clients">Kiểm tra trạng thái kết nối</a></p></html>');
    return;
  }
@@ -146,7 +153,7 @@ app.post('/approve', async (req,res)=>{
    return;
  }
  if(pending.get(id)!==entry || entry.exp<=now()) {res.status(410).send('Authorization request expired; restart connection.');return;}
- pending.delete(id);failures.delete(ip);const code=random();const p=entry.params;
+ pending.delete(id);savePending();failures.delete(ip);const code=random();const p=entry.params;
  db.codes[digest(code)]={clientId:entry.clientId,challenge:p.codeChallenge,redirect:p.redirectUri,scopes:p.scopes||['mcp'],resource:p.resource?.toString(),exp:now()+300};save();
  const destination=new URL(p.redirectUri);destination.searchParams.set('code',code);if(p.state) destination.searchParams.set('state',p.state);res.redirect(302,destination.href);
 });
@@ -547,6 +554,6 @@ registerDashboard({
   maxDevices: MAX_DEVICES, failures, agentPackageUrl: appDevicePackage
 });
 
-const sweep=setInterval(()=>{cleanup();for(const [k,v] of pending) if(v.exp<now())pending.delete(k);for(const [k,v] of failures)if(v.exp<now())failures.delete(k);save();},300000);sweep.unref();
+const sweep=setInterval(()=>{cleanup();for(const [k,v] of pending) if(v.exp<=now() || !db.clients[v.clientId])pending.delete(k);for(const [k,v] of failures)if(v.exp<now())failures.delete(k);savePending();},300000);sweep.unref();
 appServer.listen(port,bind,()=>console.log('Karis MCP listening on '+bind+':'+port+'; public issuer '+issuer.href+'; no monthly tool quota'));
 for(const sig of ['SIGINT','SIGTERM'])process.once(sig,()=>{clearInterval(sweep);clearInterval(heartbeat);for(const ws of wss.clients)ws.close();appServer.close(()=>process.exit(0));setTimeout(()=>process.exit(1),3000).unref();});
