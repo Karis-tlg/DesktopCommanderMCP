@@ -1588,3 +1588,20 @@ body.dashboard-body {
  .dashboard-body .panel-actions .button{padding-inline:7px}
 }
 @media(prefers-reduced-motion:reduce){.dashboard-body *{transition:none!important;animation:none!important}}
+
+/* Sign-in uses the same restrained dark scheme as the control panel. */
+body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.login-body .login-layout{background:#141c26;border-color:#2d3b49;box-shadow:0 24px 70px #0005}
+.login-body .login-aside{background:linear-gradient(140deg,#112c29,#101a24)}
+.login-body .login-aside p{color:#bdcec9;font-size:14px}
+.login-body .brand-name{color:#f3faf8}
+.login-body .brand-sub{color:#b4c5c3}
+.login-body .login-form-wrap h2{color:#f0f7fc}
+.login-body .login-form-wrap>p{font-size:14px;color:#b2c0ce}
+.login-body .login-form label{font-size:14px;color:#d7e3eb}
+.login-body .login-form input{background:#0d151e;border-color:#42515e;color:#f4f9fc;font-size:16px}
+.login-body .login-form input::placeholder{color:#9dacba}
+.login-body .login-form button{background:#42c9ac;color:#082721;font-size:15px}
+.login-body .login-form button:hover{background:#65dfc2}
+.login-body .login-help{color:#9eafbb;font-size:12px}
+.login-body .login-form-wrap .eyebrow{color:#75dac3}
