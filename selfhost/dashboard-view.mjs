@@ -83,7 +83,7 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
   const online = list.filter(d => d.online).length;
   const valid = ['overview','activity','clients','security','devices','connection'];
   const current = valid.includes(view) ? view : 'overview';
-  const nav = [['overview','grid','Tổng quan'],['activity','activity','Hoạt động'],['clients','users','Quyền truy cập'],['security','shield','Bảo mật']];
+  const nav = [['overview','grid','Tổng quan'],['activity','activity','Hoạt động'],['clients','users','Truy cập'],['security','shield','Bảo mật']];
   const csrf = '<input type="hidden" name="_csrf" value="' + esc(csrfToken || '') + '">';
   const postForm = (url, content, className = '') => '<form method="post" action="' + url + '" class="' + className + '">' + csrf + content + '</form>';
   const button = (name, icon, dialog, cls='button') => '<button type="button" class="' + cls + '" data-open-dialog="' + dialog + '">' + ico(icon) + name + '</button>';
@@ -129,19 +129,18 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
     '<p class="dialog-lead">Sao chép lệnh và chạy trên thiết bị mới.</p>',true,' data-auto-open') : '';
   const sidebar = '<aside class="sidebar">' + brand() + '<nav aria-label="Điều hướng chính"><div class="nav">' +
     nav.map(([id,ic,label]) => '<a href="/dashboard?view=' + id + '" data-page-nav="' + id + '"' + ((id===current || (['devices','connection'].includes(current)&&id==='overview'))?' class="active" aria-current="page"':'') + '>' + ico(ic) + '<span>' + label + '</span></a>').join('') +
-    '</div></nav><div class="sidebar-footer"><span class="status-dot is-online"></span> Self-hosted MCP</div></aside>';
+    '</div></nav></aside>';
   const top = '<header class="topbar"><strong class="topbar-heading">Karis Control</strong><div class="topbar-right"><span id="live-health" class="health-state"><span class="status-dot is-online"></span><span>Đang cập nhật trực tiếp</span></span>' +
     postForm('/dashboard/logout','<button class="button subtle signout" type="submit">' + ico('logout') + '<span>Đăng xuất</span></button>') + '</div></header>';
   const metrics = '<div class="metrics" data-live-region="metrics">' +
-    [['Trực tuyến',online,'monitor'],['Thiết bị',list.length,'server'],['Lượt gọi',usageTotal,'activity'],['Ứng dụng',clients.length,'users']].map(([name,n,ic]) =>
+    [['Trực tuyến',online,'monitor'],['Thiết bị',list.length,'server'],['Lượt gọi',usageTotal,'activity']].map(([name,n,ic]) =>
       '<div class="metric"><span>' + ico(ic) + esc(name) + '</span><strong>' + fmt(n) + '</strong></div>').join('') + '</div>';
-  const overview = '<section class="console-view" data-view="overview"><div class="page-head"><div><h1>Tổng quan</h1><p>Thiết bị và kết nối MCP của bạn</p></div>' + button('Thêm thiết bị','plus','add-device-dialog','button primary add-trigger') + '</div>' +
+  const overview = '<section class="console-view" data-view="overview"><div class="page-head"><div><h1>Tổng quan</h1></div>' + button('Thêm thiết bị','plus','add-device-dialog','button primary add-trigger') + '</div>' +
     metrics + '<div class="overview-grid"><section class="panel devices-panel"><div class="panel-head"><h2>Thiết bị <span class="section-count" data-device-total>' + fmt(list.length) + '</span></h2><div class="panel-actions">' +
-    button('Thêm','plus','add-device-dialog','button subtle') +
     button('Xem tất cả','arrow','devices-dialog','button text-action') + '</div></div><div class="device-list" data-live-region="preview-devices">' + devicePreview + '</div></section>' +
-    '<section class="panel mcp-panel"><div class="panel-head"><h2>' + ico('link') + ' Kết nối MCP</h2></div><p>Địa chỉ kết nối với ChatGPT, Cursor, VS Code.</p>' +
-    '<label for="mcp-endpoint">MCP Endpoint</label><div class="endpoint-control"><input id="mcp-endpoint" class="copy-field" value="' + esc(endpoint) + '" readonly aria-label="Địa chỉ máy chủ MCP"><button type="button" class="button subtle" data-copy-target="mcp-endpoint">' + ico('arrow') + ' Sao chép</button></div>' +
-    '<div class="mcp-note">' + ico('shield') + '<span>OAuth bảo vệ kết nối</span></div></section></div>' +
+    '<section class="panel mcp-panel"><div class="panel-head"><h2>' + ico('link') + ' Kết nối MCP</h2></div>' +
+    '<label for="mcp-endpoint">Địa chỉ MCP</label><div class="endpoint-control"><input id="mcp-endpoint" class="copy-field" value="' + esc(endpoint) + '" readonly aria-label="Địa chỉ máy chủ MCP"><button type="button" class="button subtle" data-copy-target="mcp-endpoint">' + ico('link') + ' Sao chép</button></div>' +
+    '<div class="mcp-live" data-live-region="mcp-status"><span class="status-dot' + (online ? ' is-online' : '') + '"></span><strong>' + (online ? fmt(online) + ' thiết bị sẵn sàng' : 'Chưa có thiết bị trực tuyến') + '</strong><a href="/dashboard?view=clients">' + fmt(clients.length) + ' ứng dụng được cấp quyền</a></div></section></div>' +
     '<section class="panel recent-panel"><div class="panel-head"><h2>Hoạt động gần đây</h2><a class="button text-action" href="/dashboard?view=activity">Xem chi tiết ' + ico('arrow') + '</a></div>' +
     '<ul class="activity-list" data-live-region="recent-activities">' + activitiesRows(activities.slice(0,4)) + '</ul></section></section>';
   const viewPage = (key,title,body) => '<section class="console-view" data-view="' + key + '"><div class="page-head"><h1>' + title + '</h1></div>' + body + '</section>';

@@ -81,6 +81,8 @@ try {
   }));
   assert(desktop.width<=desktop.viewport+2,'desktop overflow');
   assert.equal(desktop.visibleDevices,3);
+  assert.equal(await page.evaluate(() => document.querySelectorAll('[data-live-region="metrics"] .metric').length),3,'overview should show three useful metrics');
+  assert((await page.$eval('[data-live-region="mcp-status"]', e=>e.textContent)).includes('2 thiết bị sẵn sàng'),'MCP panel should show actual ready devices');
   assert(desktop.theme.startsWith('rgb(11, 16, 23)'),'not dark mode: '+desktop.theme);
   assert(desktop.scripts.length===1 && desktop.scripts[0].endsWith('/dashboard/ui.js'),'must use same-origin script');
   assert(desktop.forms,'CSRF missing');
@@ -124,14 +126,16 @@ try {
   sockets[1].close(1000,'realtime UI verification');
   await page.waitForFunction(()=>document.querySelector('[data-live-region="metrics"] .metric strong')?.textContent==='1',{timeout:15000});
   assert((await page.$eval('[data-live-region="preview-devices"]',el=>el.textContent)).includes('Ngoại tuyến'),'SSE did not refresh device status');
+  assert((await page.$eval('[data-live-region="mcp-status"]',el=>el.textContent)).includes('1 thiết bị sẵn sàng'),'MCP side panel did not update with SSE');
   const unauthScript=await fetch(root+'/dashboard/ui.js');
   const unauthEvents=await fetch(root+'/dashboard/events');
   assert.equal(unauthScript.status,401);
   assert.equal(unauthEvents.status,401);
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.reload({waitUntil:'domcontentloaded'});
-  const mobile=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:innerWidth,deviceTiles:document.querySelectorAll('[data-live-region="preview-devices"] .device-tile').length}));
+  const mobile=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:innerWidth,deviceTiles:document.querySelectorAll('[data-live-region="preview-devices"] .device-tile').length,navVisible:[...document.querySelectorAll('.nav a')].length===4&&[...document.querySelectorAll('.nav a')].every(a=>{const r=a.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth})}));
   assert(mobile.width<=mobile.viewport+2,'mobile horizontal overflow: '+JSON.stringify(mobile));
+  assert(mobile.navVisible,'all four mobile navigation tabs must be visible');
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-mobile.png'),fullPage:true});
   for (const route of ['activity','clients','security']) {
     await page.goto(root+'/dashboard?view='+route,{waitUntil:'domcontentloaded'});

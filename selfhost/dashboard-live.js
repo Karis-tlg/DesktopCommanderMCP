@@ -79,7 +79,7 @@
         return;
       }
       const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
-      for (const name of ['metrics','preview-devices','recent-activities','activity-list','client-list','device-full-list','modal-device-list']) {
+      for (const name of ['metrics','preview-devices','recent-activities','activity-list','client-list','device-full-list','modal-device-list','mcp-status']) {
         const selector = '[data-live-region="' + name + '"]';
         const oldNode = $(selector), newNode = parsed.querySelector(selector);
         if (!oldNode || !newNode) continue;
@@ -110,10 +110,10 @@
       try {
         const detail = JSON.parse(event.data);
         if (detail.revision === previousRevision) return;
-        const first = previousRevision === null;
         previousRevision = detail.revision;
         updateHealth(true,'Trực tiếp');
-        if (!first) void refreshVisible();
+        // Reconcile the initial SSE revision too; state may change between HTML load and subscription.
+        void refreshVisible();
       } catch {}
     });
     events.addEventListener('heartbeat', () => {

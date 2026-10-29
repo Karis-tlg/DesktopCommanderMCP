@@ -1605,3 +1605,39 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
 .login-body .login-form button:hover{background:#65dfc2}
 .login-body .login-help{color:#9eafbb;font-size:12px}
 .login-body .login-form-wrap .eyebrow{color:#75dac3}
+
+/* 2026-10-29 readability and live MCP connection refinements */
+.dashboard-body .metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.dashboard-body .metric{min-height:118px}
+.dashboard-body .metric>span{font-size:15px;color:#c0cdd8}
+.dashboard-body .device-info strong{font-size:17px}
+.dashboard-body .device-sub{font-size:14px;color:#b8c4ce}
+.dashboard-body .status-badge{font-size:14px}
+.dashboard-body .activity-copy strong{font-size:16px}
+.dashboard-body .activity-copy small{font-size:14px}
+.dashboard-body .activity-row time{font-size:14px}
+.dashboard-body .mcp-panel label{font-size:15px;color:#d2dce7;margin-top:5px}
+.dashboard-body .mcp-panel .endpoint-control{margin:2px 0 24px}
+.dashboard-body .copy-field{font-size:15px}
+.dashboard-body .mcp-live{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:auto;padding-top:19px;border-top:1px solid #31414d;line-height:1.35}
+.dashboard-body .mcp-live strong{font-size:15px;font-weight:620;color:#dce9f2}
+.dashboard-body .mcp-live a{font-size:14px;margin-left:auto;color:#81dfc6;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px}
+.dashboard-body .mcp-live a:hover,.dashboard-body .mcp-live a:focus-visible{text-decoration-color:currentColor}
+@media(max-width:690px){
+  .dashboard-body .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dashboard-body .metrics .metric:last-child{grid-column:1/-1}
+  .dashboard-body .mcp-live a{flex-basis:100%;margin-left:18px}
+  .dashboard-body .activity-copy strong{font-size:15px}
+}
+
+/* Accessible four-tab mobile navigation */
+@media(max-width:690px){
+  .dashboard-body .sidebar{padding:8px 11px 9px}
+  .dashboard-body .sidebar .brand{display:none}
+  .dashboard-body .nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
+  .dashboard-body .nav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;white-space:nowrap;min-height:59px;padding:7px 3px;font-size:14px;line-height:1.2;text-align:center}
+  .dashboard-body .nav a .icon{width:19px;height:19px}
+}
+@media(max-width:390px){
+  .dashboard-body .nav a{font-size:13px}
+}
