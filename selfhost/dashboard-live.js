@@ -16,7 +16,7 @@
     let count = 0;
     for (const item of items) {
       const name = item.querySelector('.device-info')?.textContent || '';
-      const alias = item.querySelector('.device-dropdown-panel .dropdown-alias')?.textContent || '';
+      const alias = item.dataset.deviceAlias || '';
       const matched = normalize(name + ' ' + alias).includes(query);
       item.hidden = !matched;
       if (matched) count++;
@@ -62,7 +62,13 @@
   };
   document.addEventListener('toggle', event => {
     const panel = event.target;
-    if (!(panel instanceof HTMLElement) || !panel.matches('[data-device-popover]')) return;
+    if (!(panel instanceof HTMLElement)) return;
+    if (panel.matches('.dropdown-disclosure')) {
+      const parent = panel.closest('[data-device-popover]');
+      if (parent?.matches(':popover-open')) requestAnimationFrame(() => positionDropdown(parent));
+      return;
+    }
+    if (!panel.matches('[data-device-popover]')) return;
     const button = document.querySelector('[popovertarget="' + panel.id + '"]');
     button?.setAttribute('aria-expanded', String(event.newState === 'open'));
     if (event.newState === 'open') positionDropdown(panel);
@@ -145,24 +151,29 @@
         const selector = '[data-live-region="' + name + '"]';
         const oldNode = $(selector), newNode = parsed.querySelector(selector);
         if (!oldNode || !newNode) continue;
-        if (name === 'modal-device-list' && $('#devices-dialog')?.open) {
-          const openDevicePopover = !!oldNode.querySelector('[data-device-popover]:popover-open');
-          if (openDevicePopover) {
-            const incoming = new Map([...newNode.querySelectorAll('[data-device-id]')].map(row => [row.dataset.deviceId,row]));
-            for (const row of oldNode.querySelectorAll('[data-device-id]')) {
-              const status = row.querySelector('.status-badge');
-              const fresh = incoming.get(row.dataset.deviceId)?.querySelector('.status-badge');
-              if (status && fresh && status.outerHTML !== fresh.outerHTML) status.replaceWith(fresh.cloneNode(true));
-            }
-            managerNeedsSync = true;
-            continue;
+        const existingRows = [...oldNode.querySelectorAll('[data-device-id]')];
+        const incomingRows = [...newNode.querySelectorAll('[data-device-id]')];
+        const sameDevices = existingRows.length === incomingRows.length &&
+          existingRows.every((row,i) => row.dataset.deviceId === incomingRows[i].dataset.deviceId);
+        const modalIsOpen = name === 'modal-device-list' && !!$('#devices-dialog')?.open;
+        if ((name === 'preview-devices' && sameDevices) || modalIsOpen) {
+          const incoming = new Map(incomingRows.map(row => [row.dataset.deviceId,row]));
+          for (const row of existingRows) {
+            const badge = row.querySelector('.status-badge');
+            const fresh = incoming.get(row.dataset.deviceId)?.querySelector('.status-badge');
+            if (badge && fresh && badge.outerHTML !== fresh.outerHTML) badge.replaceWith(fresh.cloneNode(true));
           }
-          oldNode.replaceWith(newNode);
-          filterDevices();
-          continue;
+          if (modalIsOpen && !sameDevices) managerNeedsSync = true;
+          continue; // Preserve button nodes, focus and open popovers during realtime refreshes.
+        }
+        if (name === 'preview-devices' && !!oldNode.querySelector('[data-device-popover]:popover-open')) {
+          managerNeedsSync = true;
+          continue; // Defer structural preview changes while a quick menu is open.
         }
         oldNode.replaceWith(newNode);
+        if (name === 'modal-device-list') filterDevices();
       }
+
       const newCount = parsed.querySelector('[data-device-total]');
       const oldCount = $('[data-device-total]');
       if (oldCount && newCount) oldCount.textContent = newCount.textContent;

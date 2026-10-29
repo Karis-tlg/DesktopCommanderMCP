@@ -92,12 +92,13 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
   const status = d => '<span class="status-badge ' + (d.online ? 'connected' : 'disconnected') + '"><span class="status-dot ' + (d.online ? 'is-online' : '') + '"></span>' + (d.online ? 'Trực tuyến' : 'Ngoại tuyến') + '</span>';
   const platform = d => /win/i.test(d.platform) ? 'monitor' : /mac|darwin/i.test(d.platform) ? 'laptop' : /linux/i.test(d.platform) ? 'server' : 'globe';
   const platformLabel = d => /win/i.test(d.platform) ? 'Windows' : /mac|darwin/i.test(d.platform) ? 'macOS' : /linux/i.test(d.platform) ? 'Linux / VPS' : 'Thiết bị';
-  const deviceDropdown = d => {
+  const deviceDropdown = (d, quick = false) => {
     const id = encodeURIComponent(d.id), path = '/dashboard/devices/' + id;
-    const endpointId = 'device-endpoint-' + id;
+    const suffix = (quick ? 'quick-' : '') + id;
+    const endpointId = 'device-endpoint-' + suffix;
     const command = 'npx --yes --package=' + agentPackageUrl + ' desktop-commander remote --endpoint <LINK_GHEP_NOI> --name ' + d.alias;
-    return '<div id="device-menu-' + esc(d.id) + '" class="device-dropdown-panel" popover="auto" data-device-popover>' +
-      '<strong class="device-dropdown-title">' + esc(d.displayName || d.alias) + '</strong><span class="dropdown-alias">' + esc(d.alias) + '</span>' +
+    return '<div id="device-menu-' + suffix + '" class="device-dropdown-panel" popover="auto" data-device-popover>' +
+      '<strong class="device-dropdown-title">' + esc(d.displayName || d.alias) + '</strong>' +
       (d.isDefault ? '<span class="device-dropdown-default">' + ico('shield') + ' Máy mặc định</span>' :
         postForm(path + '/default', '<button type="submit" class="dropdown-action">Đặt làm mặc định</button>')) +
       '<details class="dropdown-disclosure"><summary>Xem kết nối ' + ico('chevron') + '</summary>' +
@@ -121,8 +122,8 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
       '<div class="device-tools">' +
         (recentlyIssued.has(d.id) ? '<a class="button pair-view" href="/dashboard?view=overview&amp;pair=' + id + '">Lệnh vừa tạo</a>' : '') +
         '<button type="button" class="button subtle device-options-trigger" popovertarget="device-menu-' + esc(d.id) + '" popovertargetaction="toggle" aria-expanded="false" aria-label="Tùy chọn cho ' + esc(d.displayName || d.alias) + '">Tùy chọn ' + ico('chevron') + '</button></div>' :
-      '<button type="button" class="button subtle manage-button" data-open-dialog="devices-dialog" data-device-focus="' + esc(d.id) + '">Quản lý ' + ico('arrow') + '</button>';
-    return '<article class="device-tile" data-device-id="' + esc(d.id) + '"><span class="device-icon">' + ico(platform(d)) + '</span><div class="device-info"><strong>' + esc(d.displayName || d.alias) + '</strong><span class="device-sub">' + esc(platformLabel(d)) + (d.isDefault ? ' · Mặc định' : '') + '</span></div><div class="device-connect">' + status(d) + '</div>' + actions + (full ? deviceDropdown(d) : '') + '</article>';
+      '<button type="button" class="button subtle manage-button device-options-trigger" popovertarget="device-menu-quick-' + id + '" popovertargetaction="toggle" aria-expanded="false" aria-label="Quản lý nhanh ' + esc(d.displayName || d.alias) + '">Quản lý ' + ico('chevron') + '</button>';
+    return '<article class="device-tile" data-device-id="' + esc(d.id) + '" data-device-alias="' + esc(d.alias) + '"><span class="device-icon">' + ico(platform(d)) + '</span><div class="device-info"><strong>' + esc(d.displayName || d.alias) + '</strong><span class="device-sub">' + esc(platformLabel(d)) + (d.isDefault ? ' · Mặc định' : '') + '</span></div><div class="device-connect">' + status(d) + '</div>' + actions + deviceDropdown(d, !full) + '</article>';
   };
   const devicePreview = list.slice(0,4).map(d => deviceTile(d)).join('') || '<div class="empty">Chưa có thiết bị. Thêm thiết bị để bắt đầu.</div>';
   const allDevices = list.map(d => deviceTile(d,true)).join('') || '<div class="empty">Chưa có thiết bị nào.</div>';

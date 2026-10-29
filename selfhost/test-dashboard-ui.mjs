@@ -88,7 +88,29 @@ try {
   assert(desktop.theme.startsWith('rgb(11, 16, 23)'),'not dark mode: '+desktop.theme);
   assert(desktop.scripts.length===1 && desktop.scripts[0].endsWith('/dashboard/ui.js'),'must use same-origin script');
   assert(desktop.forms,'CSRF missing');
-
+  // On Overview, "Quản lý" is a per-device dropdown, not the full device dialog.
+  assert.equal(await page.evaluate(() => {
+    const ids=[...document.querySelectorAll('[id]')].map(el=>el.id);
+    return ids.length === new Set(ids).size;
+  }),true,'each quick/full dropdown and copy-field ID must be unique');
+  await page.click('[data-live-region="preview-devices"] [data-device-id="vps"] .manage-button');
+  assert(await page.evaluate(()=>document.querySelector('#device-menu-quick-vps')?.matches(':popover-open')),'Overview Manage must open a quick dropdown');
+  assert(!(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open)),'Overview Manage must not open the full devices window');
+  assert.equal(await page.$eval('#device-menu-quick-vps',el=>el.querySelectorAll('.dropdown-alias').length),0,'duplicate small device name must be removed');
+  assert.equal(await page.$eval('#device-menu-quick-vps .device-dropdown-title',el=>el.textContent),'VPS Production','retain one readable device name');
+  assert.equal(await page.$eval('[data-live-region="preview-devices"] [data-device-id="vps"] .manage-button',el=>el.getAttribute('aria-expanded')),'true');
+  await page.click('#device-menu-quick-vps .dropdown-disclosure summary');
+  await page.waitForFunction(()=>{
+    const el=document.querySelector('#device-menu-quick-vps');
+    const r=el.getBoundingClientRect();
+    return r.left>=0 && r.right<=innerWidth+2 && r.top>=0 && r.bottom<=innerHeight+2;
+  },{timeout:3000});
+  assert((await page.$eval('#device-menu-quick-vps input[readonly]',el=>el.value)).endsWith('/mcp'),'quick dropdown should show endpoint');
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-overview-quick-dropdown.png')});
+  await page.keyboard.press('Escape');
+  assert(!(await page.evaluate(()=>document.querySelector('#device-menu-quick-vps').matches(':popover-open'))),'Escape must close quick dropdown');
+  await page.waitForFunction(()=>document.querySelector('[data-live-region="preview-devices"] [data-device-id="vps"] .manage-button')?.getAttribute('aria-expanded')==='false',{timeout:2000});
+  // Search still indexes alias without rendering its duplicate as visible text.
   await page.click('.add-trigger');
   assert(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open),'add-device must open modal');
   assert(await page.$('#add-device-dialog input[name="displayName"]'),'new device field missing');
@@ -96,7 +118,7 @@ try {
   await page.keyboard.press('Escape');
   assert(!(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open)),'escape must close modal');
 
-  await page.click('[data-live-region="preview-devices"] [data-open-dialog="devices-dialog"]');
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
   assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'manage must open the device modal');
   assert.equal(await page.$('#inline-device-manager'),null,'no inline manager may be rendered');
   assert.equal((await page['$$']('#devices-dialog .device-tile')).length,3+additionalDevices);
@@ -106,6 +128,10 @@ try {
   await page.click('#device-filter');
   await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');
   assert.equal(await page.evaluate(()=>document.querySelectorAll('#devices-dialog .device-tile:not([hidden])').length),3+additionalDevices,'clearing search restores all devices');
+  await page.type('#device-filter','macbook');
+  assert.equal(await page.evaluate(()=>document.querySelectorAll('#devices-dialog .device-tile:not([hidden])').length),1,'search should still index hidden alias');
+  await page.click('#device-filter');
+  await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');
   const getHeights=()=>page.evaluate(()=>[...document.querySelectorAll('#devices-dialog .device-tile')].slice(0,3).map(row=>row.getBoundingClientRect().height));
   const heightsBefore=await getHeights();
   await page.click('#devices-dialog [data-device-id="mac-one"] .device-options-trigger');
@@ -194,6 +220,21 @@ try {
     assert(state.width<=state.viewport+2,'mobile overflow '+route);
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
+  await page.evaluate(()=>{
+    const button=document.querySelector('[data-live-region="preview-devices"] [data-device-id="vps"] .manage-button');
+    if (!button) throw new Error('mobile Manage button missing');
+    const bounds=button.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) throw new Error('mobile Manage button has no dimensions');
+    button.click(); // Avoid an SSE DOM replacement invalidating Puppeteer's element handle on stress runs.
+  });
+  assert(await page.evaluate(()=>document.querySelector('#device-menu-quick-vps')?.matches(':popover-open')),'mobile Overview Manage dropdown must open');
+  await page.click('#device-menu-quick-vps .dropdown-disclosure summary');
+  await page.waitForFunction(()=>{
+    const r=document.querySelector('#device-menu-quick-vps').getBoundingClientRect();
+    return r.left>=0 && r.right<=innerWidth+2 && r.top>=0 && r.bottom<=innerHeight+2;
+  },{timeout:3000});
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-overview-quick-mobile.png')});
+  await page.keyboard.press('Escape');
   await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
   await page.click('#devices-dialog [data-device-id="mac-one"] .device-options-trigger');
   const mobileDropdown=await page.$eval('#device-menu-mac-one',el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,width:el.scrollWidth,client:el.clientWidth}});
