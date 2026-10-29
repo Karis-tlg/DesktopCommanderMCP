@@ -1,6 +1,6 @@
 {
   "name": "@karis-tlg/desktop-commander",
-  "version": "0.3.4-karis.2",
+  "version": "0.3.4-karis.3",
   "description": "Self-host-ready privacy-oriented fork of Desktop Commander MCP",
   "mcpName": "io.github.wonderwhy-er/desktop-commander",
   "license": "MIT",

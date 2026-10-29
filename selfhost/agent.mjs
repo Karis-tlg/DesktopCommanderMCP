@@ -72,12 +72,12 @@ export async function runAgent(){
    const socket=new WebSocket(uri.href,{headers:{Authorization:`Bearer ${token}`},handshakeTimeout:10000,maxPayload:2*1024*1024});live=socket;
    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);socket.once('unexpected-response',(_,res)=>reject(new Error(`WS HTTP ${res.statusCode}`)));});
    attempt=0;console.log(`Connected to private relay: ${uri.origin}`);
-   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.2'}));
+   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.3'}));
    await new Promise(resolve=>{
     socket.on('message',async raw=>{let data;try{data=JSON.parse(raw.toString())}catch{return;}
      if(!data.id)return;
      if(data.kind==='ping'){
-      if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result:{content:[{type:'text',text:JSON.stringify({ok:true,name:displayName,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.2',uptimeSeconds:Math.floor(process.uptime())})}]}}));
+      if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result:{content:[{type:'text',text:JSON.stringify({ok:true,name:displayName,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.3',uptimeSeconds:Math.floor(process.uptime())})}]}}));
       return;
      }
      if(data.kind==='shutdown'){

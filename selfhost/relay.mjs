@@ -256,12 +256,31 @@ const auth = requireBearerAuth({ verifier: provider, requiredScopes: ['mcp'], re
 const textResult = value => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }] });
 const toolError = message => ({ isError: true, content: [{ type: 'text', text: String(message) }] });
 
-const handleMcp = async (req, res) => {
-  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.2' }, {
+const handleMcp = async (req, res, forcedDevice = null) => {
+  const forcedRecord = forcedDevice && typeof forcedDevice === 'object'
+    ? forcedDevice
+    : forcedDevice ? (activeRecords().find(d => d.id === forcedDevice || String(d.alias || '').toLowerCase() === String(forcedDevice).toLowerCase()) || null) : null;
+  if (forcedDevice && (!forcedRecord || forcedRecord.revokedAt || !activeRecords().some(d => d.id === forcedRecord.id))) { res.status(404).send('Unknown target device'); return; }
+  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.3' }, {
     capabilities: { tools: {} },
-    instructions: 'Private self-hosted Desktop Commander MCP. File and terminal tools execute with the OS permissions of the selected device. Use target_device when a user names a machine; otherwise the default device is used. Do not run destructive commands unless the user requests them.'
+    instructions: forcedRecord
+      ? 'Private self-hosted Desktop Commander MCP. This endpoint is locked to device ' + forcedRecord.alias + '. All file and terminal tools execute on that device; requests cannot switch to another device. Do not run destructive commands unless the user requests them.'
+      : 'Private self-hosted Desktop Commander MCP. File and terminal tools execute with the OS permissions of the selected device. Use target_device when a user names a machine; otherwise the default device is used. Do not run destructive commands unless the user requests them.'
   });
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: forcedRecord ? tools.map(t => {
+    const copy = { ...t, inputSchema: JSON.parse(JSON.stringify(t.inputSchema || { type: 'object', properties: {} })) };
+    copy.inputSchema.properties = copy.inputSchema.properties || {};
+    if (copy.inputSchema.properties.target_device) {
+      copy.inputSchema.properties.target_device.enum = [forcedRecord.alias];
+      copy.inputSchema.properties.target_device.description = 'This endpoint is locked to device ' + forcedRecord.alias + '.';
+    }
+    if (['ping_device', 'shutdown_device_agent'].includes(copy.name) && copy.inputSchema.properties.device_id) {
+      copy.inputSchema.properties.device_id.enum = [forcedRecord.alias];
+      copy.inputSchema.properties.device_id.description = 'This endpoint is locked to device ' + forcedRecord.alias + '.';
+    }
+    copy.description = (String(copy.description || copy.name) + '\n\nEndpoint target is locked to device ' + forcedRecord.alias + '.').slice(0, 1000);
+    return copy;
+  }) : tools }));
   server.setRequestHandler(CallToolRequestSchema, async request => {
     const route = toolMap.get(request.params.name);
     if (!route) return toolError('Unknown tool. Refresh the MCP tool list and try again.');
@@ -272,17 +291,18 @@ const handleMcp = async (req, res) => {
         recordActivity('service', route.originalName, 'ok', 0);
         return textResult({
           service: 'Karis Desktop Commander self-host',
-          version: process.env.KARIS_VERSION || '0.3.4-karis.2',
+          version: process.env.KARIS_VERSION || '0.3.4-karis.3',
           quota: 'No vendor 10,000-calls/month quota is enforced by this self-host',
           connectedDevices: devices.size,
           pairedDevices: activeRecords().length,
           authorizedMcpClients: Object.keys(db.clients || {}).length,
           totalToolCalls: Number(db.usage.totalCalls) || 0,
-          defaultDevice: viewDevice(recordFor(db.defaultDeviceId) || { id: '', alias: '', displayName: 'none', tools: [] })
+          defaultDevice: viewDevice(forcedRecord || recordFor(db.defaultDeviceId) || { id: '', alias: '', displayName: 'none', tools: [] })
         });
       }
       if (route.originalName === 'ping_device') {
-        const record = recordFor(args.device_id);
+        if (forcedRecord && args.device_id && recordFor(args.device_id)?.id !== forcedRecord.id) return toolError('This MCP endpoint is scoped to device ' + forcedRecord.alias + '.');
+        const record = forcedRecord || recordFor(args.device_id);
         if (!record) return toolError('Device not found. Call list_paired_devices to see valid aliases.');
         try {
           const started = Date.now();
@@ -291,7 +311,8 @@ const handleMcp = async (req, res) => {
         } catch (e) { return toolError('Ping failed for ' + record.alias + ': ' + e.message); }
       }
       if (route.originalName === 'shutdown_device_agent') {
-        const record = recordFor(args.device_id);
+        if (forcedRecord && args.device_id && recordFor(args.device_id)?.id !== forcedRecord.id) return toolError('This MCP endpoint is scoped to device ' + forcedRecord.alias + '.');
+        const record = forcedRecord || recordFor(args.device_id);
         if (!record) return toolError('Device not found. Call list_paired_devices to see valid aliases.');
         try { const response = await rpc(record.id, 'shutdown', {}, 8000); return record.protected ? textResult({ stopped: true, note: 'Restart VPS tools with sudo systemctl start karis-mcp-agent.service.', response }) : response; }
         catch (e) { return toolError('Shutdown failed for ' + record.alias + ': ' + e.message); }
@@ -333,7 +354,8 @@ const handleMcp = async (req, res) => {
     const callArgs = { ...args };
     const selector = callArgs.target_device;
     delete callArgs.target_device;
-    const record = recordFor(selector || route.defaultDeviceId || db.defaultDeviceId);
+    if (forcedRecord && selector && recordFor(selector)?.id !== forcedRecord.id) return toolError('This MCP endpoint is scoped to device ' + forcedRecord.alias + '.');
+    const record = recordFor(forcedRecord?.id || selector || route.defaultDeviceId || db.defaultDeviceId);
     if (!record) return toolError('No paired device is available. Open the dashboard and pair a device first.');
     if (!devices.has(record.id)) return toolError('Device ' + record.alias + ' is offline. Start its agent and retry.');
     if (!Array.isArray(record.tools) || !record.tools.some(t => t.name === route.originalName)) {
@@ -349,11 +371,17 @@ const handleMcp = async (req, res) => {
 };
 
 const appDevicePackage = process.env.KARIS_AGENT_PACKAGE_URL ||
-  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.2/karis-tlg-desktop-commander-0.3.4-karis.2.tgz';
+  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.3/karis-tlg-desktop-commander-0.3.4-karis.3.tgz';
 
 const appServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
-app.all('/mcp', auth, handleMcp);
+app.all(/^\/mcp\/?$/, auth, (req, res) => handleMcp(req, res));
+app.all('/mcp/:linkKey/device/:deviceAlias', (req, res) => {
+  if (!equal(req.params.linkKey, linkKey)) { res.status(404).send('Not found'); return; }
+  const target = activeRecords().find(d => String(d.alias || '').toLowerCase() === String(req.params.deviceAlias || '').toLowerCase());
+  if (!target) { res.status(404).send('Unknown target device'); return; }
+  return handleMcp(req, res, target);
+});
 app.all('/mcp/:linkKey', (req, res) => {
   if (!equal(req.params.linkKey, linkKey)) { res.status(404).send('Not found'); return; }
   return handleMcp(req, res);

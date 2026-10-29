@@ -42,7 +42,7 @@ const child = spawn(process.execPath, [relayFile], {
     KARIS_ADMIN_FILE: path.join(testDir, 'admin.key'),
     KARIS_AGENT_FILE: path.join(testDir, 'agent.key'),
     KARIS_LINK_KEY_FILE: path.join(testDir, 'link.key'),
-    KARIS_VERSION: '0.3.4-karis.2',
+    KARIS_VERSION: '0.3.4-karis.3',
     KARIS_AGENT_PACKAGE_URL: 'https://example.invalid/test-agent.tgz'
   },
   stdio: ['ignore', 'pipe', 'pipe']
@@ -53,6 +53,8 @@ const mocks = [];
 let realAgent = null;
 let client = null;
 let clientConnected = false;
+let scopedClient = null;
+let scopedClientConnected = false;
 let cookie = '';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function waitForHealth() {
@@ -270,7 +272,7 @@ try {
   const agentHome = path.join(testDir, 'real-agent-home');
   realAgent = spawn(process.execPath, [path.join(sourceRoot, 'dist', 'index.js'), 'remote', '--endpoint', root + '/pair/' + realAgentToken, '--name', 'local_agent', '--no-save'], {
     cwd: sourceRoot,
-    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.2' },
+    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.3' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   realAgent.stdout.pipe(relayLog);
@@ -304,6 +306,26 @@ try {
   }
   const realTool = await client.callTool({ name: 'get_config', arguments: { target_device: 'local_agent' } });
   assert(!realTool.isError, 'real local Desktop Commander tool should execute through the relay: ' + JSON.stringify(realTool));
+
+  // A device-scoped link lets clients with fixed tool schemas control one
+  // machine without changing the relay-wide default device.
+  scopedClient = new Client({ name: 'karis-device-scoped-test', version: '1.0.0' }, { capabilities: {} });
+  const scopedTransport = new StreamableHTTPClientTransport(new URL(root + '/mcp/' + linkKey + '/device/pc_two'));
+  await scopedClient.connect(scopedTransport); scopedClientConnected = true;
+  const scopedTools = await scopedClient.listTools();
+  assert.deepEqual(scopedTools.tools.find(t => t.name === 'probe').inputSchema.properties.target_device.enum, ['pc_two']);
+  const scopedProbe = await scopedClient.callTool({ name: 'probe', arguments: { value: 'locked' } });
+  assert(!scopedProbe.isError, JSON.stringify(scopedProbe));
+  assert.equal(scopedProbe.content[0].text, 'pc_two:locked', 'device-scoped endpoint must route to its fixed target');
+  const blockedSwitch = await scopedClient.callTool({ name: 'probe', arguments: { target_device: 'pc_one', value: 'wrong' } });
+  assert(blockedSwitch.isError, 'device-scoped endpoint must reject attempts to switch devices');
+  const blockedManagerSwitch = await scopedClient.callTool({ name: 'ping_device', arguments: { device_id: 'pc_one' } });
+  assert(blockedManagerSwitch.isError, 'device-scoped endpoint must not ping another device');
+  const scopedPing = await scopedClient.callTool({ name: 'ping_device', arguments: { device_id: 'pc_two' } });
+  assert(!scopedPing.isError && scopedPing.content[0].text.includes('"responsive": true'));
+  const badScopedPath = await fetch(root + '/mcp/' + linkKey + '/device/not-paired', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(badScopedPath.status, 404, 'device-scoped route must reject unknown aliases');
+
   const deviceListResult = await client.callTool({ name: 'list_paired_devices', arguments: {} });
   const deviceList = JSON.parse(deviceListResult.content[0].text);
   assert.equal(deviceList.length, 4);
@@ -356,8 +378,9 @@ try {
   const empty = await client.callTool({ name: 'list_paired_devices', arguments: {} });
   assert.equal(JSON.parse(empty.content[0].text).length, 0);
 
-  console.log('PASS: dashboard pairing links for 4 devices including the real Desktop Commander agent; OAuth MCP; core tool routing via target_device; usage/activity; ping/shutdown; individual revoke and revoke-all; no monthly quota.');
+  console.log('PASS: multi-device pairing; OAuth MCP; target_device routing; fixed per-device MCP link with cross-device denial; usage/activity; ping/shutdown; individual revoke and revoke-all; no monthly quota.');
 } finally {
+  if (scopedClientConnected) await scopedClient.close().catch(() => {});
   if (clientConnected) await client.close().catch(() => {});
   if (realAgent && realAgent.exitCode === null) {
     realAgent.kill('SIGTERM');
