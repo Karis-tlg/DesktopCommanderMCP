@@ -155,7 +155,13 @@ app.post('/approve', async (req,res)=>{
  if(pending.get(id)!==entry || entry.exp<=now()) {res.status(410).send('Authorization request expired; restart connection.');return;}
  pending.delete(id);savePending();failures.delete(ip);const code=random();const p=entry.params;
  db.codes[digest(code)]={clientId:entry.clientId,challenge:p.codeChallenge,redirect:p.redirectUri,scopes:p.scopes||['mcp'],resource:p.resource?.toString(),exp:now()+300};save();
- const destination=new URL(p.redirectUri);destination.searchParams.set('code',code);if(p.state) destination.searchParams.set('state',p.state);res.redirect(302,destination.href);
+ const destination=new URL(p.redirectUri);destination.searchParams.set('code',code);if(p.state) destination.searchParams.set('state',p.state);
+ // Chromium applies CSP form-action to a POST redirect chain. Our authorization
+ // form is same-origin by design, but redirecting POST /approve straight to an
+ // external OAuth callback can be blocked before the client receives the code.
+ // Return an uncacheable HTML navigation instead; retain CSP form-action 'self'.
+ const callbackUrl=esc(destination.href);
+ res.status(200).type('html').send('<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url='+callbackUrl+'"><title>Authorization approved</title></head><body><p>Authorization approved. Returning to your MCP client.</p><a rel="noreferrer" href="'+callbackUrl+'">Continue to MCP client</a></body></html>');
 });
 app.get('/settings',(_req,res)=>res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Karis MCP Settings</title><style>body{font:16px system-ui;max-width:600px;margin:8vh auto;padding:25px;background:#101820;color:white}input,button{font:inherit;padding:10px;margin:8px 0}button{background:#245b6f;color:white;border:0;border-radius:5px}</style><h1>Client permissions</h1><p>Manage OAuth clients connected to your private MCP. The admin password is required for each operation.</p><form method="post" action="/settings"><input type="password" name="password" required autocomplete="off" placeholder="Admin password"><button type="submit" name="action" value="list">Show connected clients</button></form>`));
 app.post('/settings',(req,res)=>{

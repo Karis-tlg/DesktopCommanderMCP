@@ -179,8 +179,9 @@ async function oauthClient() {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ request: requestId, password: adminKey }), redirect: 'manual'
   });
-  assert.equal(approved.status, 302);
-  const callback = new URL(approved.headers.get('location'));
+  assert.equal(approved.status, 200);
+  const approvedHtml=await approved.text();
+  const callback = new URL(approvedHtml.match(/http-equiv="refresh" content="0;url=([^"]+)/)?.[1].replaceAll('&amp;', '&'));
   assert.equal(callback.searchParams.get('state'), 'multi-device-test');
   const tokenRes = await fetch(meta.token_endpoint, {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

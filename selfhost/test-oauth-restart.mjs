@@ -58,8 +58,9 @@ try {
   for(let i=0;i<40;i++){const h=await (await fetch(root+'/healthz')).json();if(h.connectedDevices>0){connected=true;break}await delay(100)}
   assert(connected,'mock test-only device registered');
   const approve=await fetch(root+'/approve',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({request:id,password:keys.admin}),redirect:'manual'});
-  assert.equal(approve.status,302,'retained approval should authorize with valid admin + live device');
-  const cb=new URL(approve.headers.get('location'));assert.equal(cb.searchParams.get('state'),'reboot-test');
+  assert.equal(approve.status,200,'retained approval should authorize with valid admin + live device');
+  const approvedHtml=await approve.text();
+  const cb=new URL(approvedHtml.match(/http-equiv="refresh" content="0;url=([^"]+)/)?.[1].replaceAll('&amp;', '&'));assert.equal(cb.searchParams.get('state'),'reboot-test');
   const token=await fetch(root+'/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',client_id:client.client_id,code:cb.searchParams.get('code'),code_verifier:verifier,redirect_uri:'http://127.0.0.1:18799/callback',resource:root+'/mcp'})});
   assert.equal(token.status,200,await token.text().then(x=>x.slice(0,160))); // do not log successful token
   const replay=await fetch(root+'/approve',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({request:id,password:keys.admin}),redirect:'manual'});
