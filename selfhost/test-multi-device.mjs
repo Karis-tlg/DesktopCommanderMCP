@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -66,14 +67,32 @@ async function waitForHealth() {
   }
   throw new Error('Test relay did not start. Log: ' + fs.readFileSync(path.join(testDir, 'relay.log'), 'utf8'));
 }
-async function addDevice(displayName, alias) {
-  const r = await fetch(root + '/dashboard/devices/new', {
-    method: 'POST',
-    headers: { Cookie: cookie, Origin: root, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ displayName, alias }),
-    redirect: 'manual'
-  });
-  assert.equal(r.status, 303, 'create device must redirect');
+async function addDevice(displayName, alias, simulateProxyHost = false) {
+  const form = new URLSearchParams({ displayName, alias }).toString();
+  let status;
+  if (simulateProxyHost) {
+    const target = new URL(root + '/dashboard/devices/new');
+    status = await new Promise((resolve, reject) => {
+      const request = http.request({
+        hostname: target.hostname, port: target.port, path: target.pathname, method: 'POST',
+        headers: {
+          Cookie: cookie, Origin: root, 'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(form), Host: 'relay-internal.invalid:18791'
+        }
+      }, response => { response.resume(); response.on('end', () => resolve(response.statusCode)); });
+      request.on('error', reject);
+      request.end(form);
+    });
+  } else {
+    const r = await fetch(root + '/dashboard/devices/new', {
+      method: 'POST',
+      headers: { Cookie: cookie, Origin: root, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form,
+      redirect: 'manual'
+    });
+    status = r.status;
+  }
+  assert.equal(status, 303, 'create device must redirect even when proxy rewrites Host');
   const page = await fetch(root + '/dashboard', { headers: { Cookie: cookie } });
   assert.equal(page.status, 200);
   const html = await page.text();
@@ -177,7 +196,14 @@ try {
   const page = await fetch(root + '/dashboard', { headers: { Cookie: cookie } });
   assert.equal(page.status, 200);
 
-  const pcOneToken = await addDevice('Kha Windows PC', 'pc_one');
+  const crossOriginCreate = await fetch(root + '/dashboard/devices/new', {
+    method: 'POST',
+    headers: { Cookie: cookie, Origin: 'https://attacker.example', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ displayName: 'Blocked Cross Origin', alias: 'blocked_origin' }),
+    redirect: 'manual'
+  });
+  assert.equal(crossOriginCreate.status, 403, 'cross-origin device creation must remain blocked');
+  const pcOneToken = await addDevice('Kha Windows PC', 'pc_one', true);
   const pcTwoToken = await addDevice('Office Windows', 'pc_two');
   const macToken = await addDevice('Kha MacBook', 'macbook');
   const realAgentToken = await addDevice('Local Linux Agent', 'local_agent');

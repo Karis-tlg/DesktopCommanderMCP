@@ -29,7 +29,16 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
   }
   function sameOrigin(req) {
     if (!req.headers.origin) return true;
-    try { return new URL(req.headers.origin).host === req.get('host'); } catch { return false; }
+    try {
+      const origin = new URL(req.headers.origin).origin;
+      // The reverse proxy can rewrite Host to its private upstream address.
+      // Trust the explicitly configured public issuer, not arbitrary forwarded headers.
+      if (origin === issuer.origin) return true;
+      // Permit direct browser access only when the request is explicitly loopback-local.
+      const requestOrigin = new URL(`${req.protocol}://${req.get('host')}`);
+      return ['127.0.0.1', 'localhost', '[::1]'].includes(requestOrigin.hostname)
+        && origin === requestOrigin.origin;
+    } catch { return false; }
   }
   function loginPage(message = '') {
     return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Karis MCP · Sign in</title><style>' +

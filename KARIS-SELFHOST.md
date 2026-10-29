@@ -9,6 +9,7 @@ This fork keeps the MIT-licensed Desktop Commander local MCP tools and adds an i
 - Up to 32 registered devices. Each device has a separate high-entropy pairing key stored as a hash on the server. Pair links are shown once and can be rotated.
 - Local Desktop Commander tool schemas are retained. Tools have an optional `target_device` argument; omit it to use the default device. Additional tools include `list_paired_devices`, `get_current_user_info`, `ping_device`, `shutdown_device_agent`, `get_prompt_library`, `get_recent_tool_activity`, `get_usage_statistics`, and `submit_feedback`.
 - Activity records include tool, device, status and duration only; arguments and file contents are not recorded.
+- Dashboard CSRF protection supports reverse proxies that rewrite the upstream `Host`: it accepts only the configured public issuer origin (or a same-origin loopback request), and rejects untrusted cross-origin requests. Regression-tested with a simulated proxy Host rewrite and a malicious Origin.
 - No hosted vendor 10,000 tool-calls/month quota is enforced by this self-host. The vendor's quota is separate and is not changed.
 
 ## VPS deployment
