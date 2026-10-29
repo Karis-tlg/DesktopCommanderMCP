@@ -1722,3 +1722,21 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
  .dashboard-body .control-dialog .device-tools{grid-column:1/-1;grid-row:3;justify-content:flex-start;max-width:100%}
  .dashboard-body .control-dialog .device-options{right:auto;left:0;max-width:calc(95vw - 48px);min-width:min(320px,78vw)}
 }
+
+/* Device actions are shown in their own dialog, never inside a list row. */
+.dashboard-body .action-target{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-bottom:18px;border-bottom:1px solid #354350}
+.dashboard-body .action-target>div{display:grid;gap:3px;min-width:0}
+.dashboard-body .action-target strong{font-size:19px;font-weight:720;overflow-wrap:anywhere}
+.dashboard-body .action-target span:not(.default-label){font-size:14px;color:#aebdca}
+.dashboard-body .device-action-block{padding:20px 0;border-bottom:1px solid #354350}
+.dashboard-body .device-action-block h3{font-size:16px;margin:0 0 7px;color:#e6eff6}
+.dashboard-body .device-action-block p{font-size:14px;line-height:1.55;color:#aebeca;margin:0 0 14px}
+.dashboard-body .device-action-block form{display:grid;justify-items:start;gap:12px}
+.dashboard-body .device-action-block .button{max-width:100%;white-space:normal}
+.dashboard-body .device-action-block .confirm-label{font-size:14px;color:#d8e0e8}
+.dashboard-body .device-action-revoke{padding:18px 0;border-bottom:1px solid #354350}
+.dashboard-body .device-action-revoke>summary{cursor:pointer;font-size:15px;font-weight:630;color:#efa9a3}
+.dashboard-body .device-action-revoke>p{color:#b8c5cf;margin:13px 0;font-size:14px}
+.dashboard-body .device-action-revoke form{display:grid;gap:12px;justify-items:start}
+.dashboard-body #device-actions-dialog .dialog-footer{margin-top:20px}
+@media(max-width:500px){.dashboard-body #device-actions-dialog form .button{width:100%}}

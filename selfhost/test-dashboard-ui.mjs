@@ -112,6 +112,13 @@ try {
   await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');
   assert.equal(await page.evaluate(()=>document.querySelectorAll('#devices-dialog .device-tile:not([hidden])').length),3+additionalDevices,'clearing search restores devices');
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-device-modal.png')});
+  const getHeights = () => page.evaluate(() => [...document.querySelectorAll('#devices-dialog .device-tile')].slice(0,3).map(row => row.getBoundingClientRect().height));
+  const heightsBefore = await getHeights();
+  await page.click('#devices-dialog [data-device-id="mac-one"] [data-device-actions]');
+  assert(await page.evaluate(()=>document.querySelector('#device-actions-dialog')?.open),'options dialog missing');
+  assert.deepEqual(await getHeights(),heightsBefore,'opening options must not change list row heights');
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-actions-modal.png')});
+  await page.keyboard.press('Escape');
   await page.click('#devices-dialog [data-connect-device]');
   assert(await page.evaluate(()=>document.querySelector('#device-connection-dialog')?.open),'connection read-only dialog failed');
   assert((await page.$eval('#connection-mcp-endpoint',e=>e.value)).endsWith('/mcp'),'MCP endpoint missing');
@@ -184,6 +191,13 @@ try {
     assert(state.width<=state.viewport+2,'mobile overflow '+route);
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  await page.click('#devices-dialog [data-device-id="mac-one"] [data-device-actions]');
+  const actionsMobile = await page.$eval('#device-actions-dialog',el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.scrollWidth,client:el.clientWidth}));
+  assert(actionsMobile.left>=0 && actionsMobile.right<=390 && actionsMobile.width<=actionsMobile.client+2,'mobile options dialog overflow: '+JSON.stringify(actionsMobile));
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-actions-mobile.png')});
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   await page.click('.add-trigger');
   const mobileDialog=await page.$eval('#add-device-dialog',el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth}));
   assert(mobileDialog.left>=0 && mobileDialog.right<=390 && mobileDialog.scrollWidth<=mobileDialog.clientWidth+2,'mobile add-device dialog overflow: '+JSON.stringify(mobileDialog));

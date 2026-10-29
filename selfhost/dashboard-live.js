@@ -14,7 +14,9 @@
     const items = [...document.querySelectorAll('#devices-dialog .device-tile')];
     let visible = 0;
     for (const item of items) {
-      const matches = normalize(item.textContent).includes(query);
+      const visibleText = item.querySelector('.device-info')?.textContent || '';
+      const alias = item.querySelector('[data-device-actions]')?.dataset.alias || '';
+      const matches = normalize(visibleText + ' ' + alias).includes(query);
       item.hidden = !matches;
       if (matches) visible++;
     }
@@ -51,6 +53,15 @@
     else dialog.querySelector('.dialog-head h2')?.focus({preventScroll:true});
   };
 
+  const openDeviceActions = trigger => {
+    const template = [...document.querySelectorAll('template[data-device-action-template]')]
+      .find(el => el.dataset.deviceActionTemplate === trigger.dataset.id);
+    if (!template) return;
+    const content = $('#device-actions-content');
+    content.replaceChildren(template.content.cloneNode(true));
+    openModal('device-actions-dialog');
+  };
+
   document.addEventListener('click', async event => {
     const start = event.target.closest('[data-open-dialog]');
     if (start) {
@@ -73,6 +84,8 @@
       openModal('device-connection-dialog');
       return;
     }
+    const option = event.target.closest('[data-device-actions]');
+    if (option) { openDeviceActions(option); return; }
     const copy = event.target.closest('[data-copy-target]');
     if (copy) {
       const field = document.getElementById(copy.dataset.copyTarget);

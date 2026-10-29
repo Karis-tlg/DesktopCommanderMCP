@@ -92,21 +92,29 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
   const status = d => '<span class="status-badge ' + (d.online ? 'connected' : 'disconnected') + '"><span class="status-dot ' + (d.online ? 'is-online' : '') + '"></span>' + (d.online ? 'Trực tuyến' : 'Ngoại tuyến') + '</span>';
   const platform = d => /win/i.test(d.platform) ? 'monitor' : /mac|darwin/i.test(d.platform) ? 'laptop' : /linux/i.test(d.platform) ? 'server' : 'globe';
   const platformLabel = d => /win/i.test(d.platform) ? 'Windows' : /mac|darwin/i.test(d.platform) ? 'macOS' : /linux/i.test(d.platform) ? 'Linux / VPS' : 'Thiết bị';
+  const deviceActionTemplate = d => {
+    const path = '/dashboard/devices/' + encodeURIComponent(d.id);
+    return '<template data-device-action-template="' + esc(d.id) + '">' +
+      '<div class="action-target"><div><strong>' + esc(d.displayName || d.alias) + '</strong><span>' + esc(platformLabel(d)) + '</span></div>' +
+      (d.isDefault ? '<span class="default-label">' + ico('shield') + ' Mặc định</span>' : '') + '</div>' +
+      '<div class="device-action-block"><h3>Thiết bị mặc định</h3>' +
+      (d.isDefault ? '<p>Đang được sử dụng khi không chỉ định máy đích.</p>' :
+        postForm(path + '/default','<button type="submit" class="button subtle">Đặt làm mặc định</button>')) + '</div>' +
+      '<div class="device-action-block"><h3>Ghép nối lại</h3><p>Cấp lại khóa sẽ ngắt kết nối hiện tại. Chỉ thực hiện khi cần ghép nối lại máy.</p>' +
+      postForm(path + '/rotate','<label class="confirm-label"><input type="checkbox" name="confirm" value="rotate" required> Tôi hiểu kết nối hiện tại sẽ bị ngắt</label><button type="submit" class="button danger">Cấp lại khóa</button>', 'device-action-rotate') +
+      '</div><details class="device-action-revoke"><summary>Thu hồi quyền thiết bị</summary><p>Thiết bị sẽ không thể kết nối lại bằng khóa hiện tại.</p>' +
+      postForm(path + '/revoke','<label class="confirm-label"><input type="checkbox" required> Xác nhận thu hồi thiết bị</label><button type="submit" class="button danger">Thu hồi quyền</button>') + '</details>' +
+      '<div class="dialog-footer"><button type="button" class="button subtle" data-close-dialog>Đóng</button></div></template>';
+  };
   const deviceTile = (d, full = false) => {
     const id = encodeURIComponent(d.id);
     const actions = full ?
       '<div class="device-tools">' +
         '<button type="button" class="button subtle" data-connect-device data-device-name="' + esc(d.displayName || d.alias) + '" data-device-alias="' + esc(d.alias) + '">Xem kết nối</button>' +
         (recentlyIssued.has(d.id) ? '<a class="button pair-view" href="/dashboard?view=overview&amp;pair=' + id + '">Xem lệnh vừa tạo</a>' : '') +
-        '<details class="device-more"><summary class="button subtle">Tùy chọn ' + ico('chevron') + '</summary><div class="device-options">' +
-        (d.isDefault ? '<span class="default-label">' + ico('shield') + ' Thiết bị mặc định</span>' : postForm('/dashboard/devices/'+id+'/default','<button type="submit" class="button subtle">Đặt làm mặc định</button>')) +
-        '<p class="risk-caption">Cấp lại khóa sẽ làm thiết bị đang kết nối bị ngắt. Chỉ thực hiện khi cần ghép nối lại.</p>' +
-        postForm('/dashboard/devices/'+id+'/rotate','<label class="confirm-label"><input type="checkbox" name="confirm" value="rotate" required> Tôi muốn thay khóa hiện tại và kết nối lại thiết bị này</label><button type="submit" class="button danger">Cấp lại khóa</button>') +
-        '<details class="danger-option"><summary>Thu hồi thiết bị</summary>' +
-        postForm('/dashboard/devices/'+id+'/revoke','<label class="confirm-label"><input type="checkbox" required> Tôi hiểu thiết bị sẽ mất kết nối</label><button type="submit" class="button danger">Xác nhận thu hồi</button>') +
-        '</details></div></details></div>' :
+        '<button type="button" class="button subtle device-options-trigger" data-device-actions data-id="' + esc(d.id) + '" data-name="' + esc(d.displayName || d.alias) + '" data-alias="' + esc(d.alias) + '" data-platform="' + esc(platformLabel(d)) + '" data-default="' + (d.isDefault ? 'true' : 'false') + '" data-protected="' + (d.protected ? 'true' : 'false') + '">Tùy chọn ' + ico('chevron') + '</button></div>' :
       '<button type="button" class="button subtle manage-button" data-open-dialog="devices-dialog" data-device-focus="' + esc(d.id) + '">Quản lý ' + ico('arrow') + '</button>';
-    return '<article class="device-tile" data-device-id="' + esc(d.id) + '"><span class="device-icon">' + ico(platform(d)) + '</span><div class="device-info"><strong>' + esc(d.displayName || d.alias) + '</strong><span class="device-sub">' + esc(platformLabel(d)) + (d.isDefault ? ' · Mặc định' : '') + '</span></div><div class="device-connect">' + status(d) + '</div>' + actions + '</article>';
+    return '<article class="device-tile" data-device-id="' + esc(d.id) + '"><span class="device-icon">' + ico(platform(d)) + '</span><div class="device-info"><strong>' + esc(d.displayName || d.alias) + '</strong><span class="device-sub">' + esc(platformLabel(d)) + (d.isDefault ? ' · Mặc định' : '') + '</span></div><div class="device-connect">' + status(d) + '</div>' + actions + (full ? deviceActionTemplate(d) : '') + '</article>';
   };
   const devicePreview = list.slice(0,4).map(d => deviceTile(d)).join('') || '<div class="empty">Chưa có thiết bị. Thêm thiết bị để bắt đầu.</div>';
   const allDevices = list.map(d => deviceTile(d,true)).join('') || '<div class="empty">Chưa có thiết bị nào.</div>';
@@ -138,6 +146,7 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
     '<label class="copy-label" for="connection-command">Mẫu lệnh ghép nối thiết bị</label><textarea id="connection-command" class="copy-field" rows="3" data-agent-package="' + esc(agentPackageUrl) + '" readonly></textarea>' +
     '<p class="pair-warning">Lệnh mẫu cần thay &lt;LINK_GHEP_NOI&gt; bằng liên kết riêng. Khóa của thiết bị đã được lưu dưới dạng băm nên không thể xem lại. Chỉ cấp lại khóa khi thật sự cần kết nối lại, vì thao tác đó ngắt kết nối hiện tại.</p>' +
     '<div class="dialog-footer"><button type="button" class="button primary" data-close-dialog>Đóng</button></div>');
+  const deviceActions = modal('device-actions-dialog','Tùy chọn thiết bị', '<div id="device-actions-content"></div>');
   const sidebar = '<aside class="sidebar">' + brand() + '<nav aria-label="Điều hướng chính"><div class="nav">' +
     nav.map(([id,ic,label]) => '<a href="/dashboard?view=' + id + '" data-page-nav="' + id + '"' + ((id===current || (['devices','connection'].includes(current)&&id==='overview'))?' class="active" aria-current="page"':'') + '>' + ico(ic) + '<span>' + label + '</span></a>').join('') +
     '</div></nav></aside>';
@@ -181,7 +190,7 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
     modal('devices-dialog','Quản lý thiết bị',
       '<div class="device-filter-bar"><label for="device-filter">Tìm thiết bị<input type="search" id="device-filter" placeholder="Tên thiết bị, alias, hệ điều hành" autocomplete="off"></label><span id="device-filter-count" role="status" aria-live="polite">' + fmt(list.length) + ' thiết bị</span></div>' +
       '<div class="dialog-list" data-live-region="modal-device-list">' + allDevices + '</div>' +
-      '<p id="device-filter-empty" class="empty" hidden>Không tìm thấy thiết bị phù hợp.</p>',true) + deviceConnection + issued;
+      '<p id="device-filter-empty" class="empty" hidden>Không tìm thấy thiết bị phù hợp.</p>',true) + deviceConnection + deviceActions + issued;
   const content = '<div class="app-shell">' + sidebar + '<div class="main-wrap">' + top + '<main class="workspace">' +
     (message?'<div class="notice" role="status">'+esc(message)+'</div>':'') + views[current] +
     '</main></div></div>' + dialogs + '<span id="copy-status" class="sr-only" role="status" aria-live="polite"></span>' +
