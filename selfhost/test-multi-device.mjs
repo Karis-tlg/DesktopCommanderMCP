@@ -42,7 +42,7 @@ const child = spawn(process.execPath, [relayFile], {
     KARIS_ADMIN_FILE: path.join(testDir, 'admin.key'),
     KARIS_AGENT_FILE: path.join(testDir, 'agent.key'),
     KARIS_LINK_KEY_FILE: path.join(testDir, 'link.key'),
-    KARIS_VERSION: '0.3.4-karis.3',
+    KARIS_VERSION: '0.3.4-karis.4',
     KARIS_AGENT_PACKAGE_URL: 'https://example.invalid/test-agent.tgz'
   },
   stdio: ['ignore', 'pipe', 'pipe']
@@ -272,7 +272,7 @@ try {
   const agentHome = path.join(testDir, 'real-agent-home');
   realAgent = spawn(process.execPath, [path.join(sourceRoot, 'dist', 'index.js'), 'remote', '--endpoint', root + '/pair/' + realAgentToken, '--name', 'local_agent', '--no-save'], {
     cwd: sourceRoot,
-    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.3' },
+    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.4' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   realAgent.stdout.pipe(relayLog);
@@ -294,10 +294,11 @@ try {
   assert(list.tools.some(t => t.name === 'probe'), 'device tools should be merged by name');
   assert(list.tools.some(t => t.name === 'get_config'), 'full local Desktop Commander tools should be exposed');
   assert(list.tools.some(t => t.name === 'list_paired_devices'));
-  assert(list.tools.find(t => t.name === 'probe').inputSchema.properties.target_device.enum.includes('pc_one'));
-  assert(list.tools.find(t => t.name === 'probe').inputSchema.properties.target_device.enum.includes('pc_two'));
-  assert(list.tools.find(t => t.name === 'probe').inputSchema.properties.target_device.enum.includes('macbook'));
-  assert(list.tools.find(t => t.name === 'get_config').inputSchema.properties.target_device.enum.includes('local_agent'));
+  const commonTargetSchema = list.tools.find(t => t.name === 'probe').inputSchema.properties.target_device;
+  assert.equal(commonTargetSchema.type, 'string');
+  assert.equal(Object.hasOwn(commonTargetSchema, 'enum'), false, 'common endpoint must not freeze device aliases into a cached schema');
+  assert.match(commonTargetSchema.description, /list_paired_devices/);
+  assert.equal(Object.hasOwn(list.tools.find(t => t.name === 'get_config').inputSchema.properties.target_device, 'enum'), false);
 
   for (const alias of ['pc_one', 'pc_two', 'macbook']) {
     const result = await client.callTool({ name: 'probe', arguments: { target_device: alias, value: 'ok' } });

@@ -114,7 +114,7 @@ app.post('/settings',(req,res)=>{
  res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Karis MCP Settings</title><style>body{font:16px system-ui;max-width:700px;margin:8vh auto;padding:25px;background:#101820;color:white}li{margin:20px 0}input,button{font:inherit;padding:10px;margin:8px}button{background:#245b6f;color:white;border:0;border-radius:5px}</style><h1>Connected OAuth clients</h1><p>${Object.keys(db.clients).length} clients registered. Revoke removes all of a client's access and refresh tokens.</p><ul>${list}</ul><p><a href="/settings">Back</a></p>`);
 });
 // Multi-device registry, routing and management tools.
-const MAX_DEVICES = 32;
+const MAX_DEVICES = Math.max(1, Number.parseInt(process.env.KARIS_MAX_DEVICES || '256', 10) || 256);
 if (!db.devices || typeof db.devices !== 'object') db.devices = {};
 if (!db.defaultDeviceId) db.defaultDeviceId = 'vps';
 const devices = new Map();
@@ -169,8 +169,6 @@ const rebuildTools = () => {
   toolMap.clear();
   const records = activeRecords();
   const defaultRecord = records.find(d => d.id === db.defaultDeviceId) || records.find(d => d.protected) || records[0] || null;
-  const aliases = records.map(d => d.alias);
-  const descriptions = records.map(d => d.alias + ' (' + d.displayName + ')').join(', ') || 'no paired devices';
   const unique = new Map();
   for (const record of records) {
     for (const t of Array.isArray(record.tools) ? record.tools : []) {
@@ -183,10 +181,9 @@ const rebuildTools = () => {
     schema.properties = schema.properties || {};
     schema.properties.target_device = {
       type: 'string',
-      enum: aliases,
-      description: 'Choose the machine by alias. Available: ' + descriptions + '. If omitted, uses the default device ' + (defaultRecord?.alias || 'none') + '.'
+      description: 'Choose a machine alias returned by list_paired_devices. If omitted, uses the default device ' + (defaultRecord?.alias || 'none') + '.'
     };
-    const tool = { ...source, name, inputSchema: schema, description: (String(source.description || name) + '\n\nTarget machine: set target_device to one of ' + aliases.join(', ') + '. If omitted, the default device is ' + (defaultRecord?.alias || 'none') + '.').slice(0, 1000) };
+    const tool = { ...source, name, inputSchema: schema, description: (String(source.description || name) + '\n\nTarget machine: set target_device to an alias returned by list_paired_devices. If omitted, the default device is ' + (defaultRecord?.alias || 'none') + '.').slice(0, 1000) };
     tools.push(tool);
     toolMap.set(name, { kind: 'device', originalName: name, defaultDeviceId: defaultRecord?.id || null });
   }
@@ -201,10 +198,10 @@ const rebuildTools = () => {
     if (schema.type !== 'object') { schema.type = 'object'; schema.properties = {}; }
     schema.properties = schema.properties || {};
     schema.properties.target_device = {
-      type: 'string', enum: aliases,
-      description: 'Choose the machine by alias. Available: ' + descriptions + '. Defaults to ' + (defaultRecord?.alias || 'none') + '.'
+      type: 'string',
+      description: 'Choose a machine alias returned by list_paired_devices. Defaults to ' + (defaultRecord?.alias || 'none') + '.'
     };
-    tools.push({ ...source, name: alias, inputSchema: schema, description: ('Compatibility alias for ' + originalName + '. ' + String(source.description || '') + '\n\nChoose target_device from: ' + aliases.join(', ') + '. Defaults to ' + (defaultRecord?.alias || 'none') + '.').slice(0, 1000) });
+    tools.push({ ...source, name: alias, inputSchema: schema, description: ('Compatibility alias for ' + originalName + '. ' + String(source.description || '') + '\n\nChoose target_device from list_paired_devices. Defaults to ' + (defaultRecord?.alias || 'none') + '.').slice(0, 1000) });
     toolMap.set(alias, { kind: 'device', originalName, defaultDeviceId: defaultRecord?.id || null });
   }
   for (const t of managerTools) {
@@ -261,7 +258,7 @@ const handleMcp = async (req, res, forcedDevice = null) => {
     ? forcedDevice
     : forcedDevice ? (activeRecords().find(d => d.id === forcedDevice || String(d.alias || '').toLowerCase() === String(forcedDevice).toLowerCase()) || null) : null;
   if (forcedDevice && (!forcedRecord || forcedRecord.revokedAt || !activeRecords().some(d => d.id === forcedRecord.id))) { res.status(404).send('Unknown target device'); return; }
-  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.3' }, {
+  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.4' }, {
     capabilities: { tools: {} },
     instructions: forcedRecord
       ? 'Private self-hosted Desktop Commander MCP. This endpoint is locked to device ' + forcedRecord.alias + '. All file and terminal tools execute on that device; requests cannot switch to another device. Do not run destructive commands unless the user requests them.'
@@ -291,7 +288,7 @@ const handleMcp = async (req, res, forcedDevice = null) => {
         recordActivity('service', route.originalName, 'ok', 0);
         return textResult({
           service: 'Karis Desktop Commander self-host',
-          version: process.env.KARIS_VERSION || '0.3.4-karis.3',
+          version: process.env.KARIS_VERSION || '0.3.4-karis.4',
           quota: 'No vendor 10,000-calls/month quota is enforced by this self-host',
           connectedDevices: devices.size,
           pairedDevices: activeRecords().length,
@@ -371,7 +368,7 @@ const handleMcp = async (req, res, forcedDevice = null) => {
 };
 
 const appDevicePackage = process.env.KARIS_AGENT_PACKAGE_URL ||
-  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.3/karis-tlg-desktop-commander-0.3.4-karis.3.tgz';
+  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.4/karis-tlg-desktop-commander-0.3.4-karis.4.tgz';
 
 const appServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
