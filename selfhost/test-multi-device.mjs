@@ -153,6 +153,8 @@ async function oauthClient() {
   });
   const rc = await reg.json();
   assert.equal(reg.status, 201, JSON.stringify(rc));
+  const registeredPage = await (await fetch(root + '/dashboard?view=clients', { headers: { Cookie: cookie } })).text();
+  assert(!registeredPage.includes('Karis multi-device E2E'), 'registration alone must not appear as authorized');
   const verifier = randomBytes(36).toString('base64url');
   const challenge = createHash('sha256').update(verifier).digest('base64url');
   const auth = new URL(meta.authorization_endpoint);
@@ -166,6 +168,13 @@ async function oauthClient() {
   const html = await page.text();
   const requestId = html.match(/name="request" value="([^"]+)"/)?.[1];
   assert(requestId);
+  const repeatedPage = await (await fetch(auth)).text();
+  assert.equal(repeatedPage.match(/name="request" value="([^"]+)"/)?.[1], requestId,
+    'retries with identical state must reuse an in-flight approval');
+  const expired = await fetch(root + '/approve', { method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({ request:'nonexistent', password:adminKey }), redirect:'manual' });
+  assert.equal(expired.status, 410, 'expired approval cannot issue OAuth codes');
   const approved = await fetch(root + '/approve', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ request: requestId, password: adminKey }), redirect: 'manual'
@@ -183,6 +192,9 @@ async function oauthClient() {
   });
   const token = await tokenRes.json();
   assert.equal(tokenRes.status, 200, JSON.stringify(token));
+  const pendingPage = await (await fetch(root + '/dashboard?view=clients', {headers:{Cookie:cookie}})).text();
+  assert(pendingPage.includes('Karis multi-device E2E') && pendingPage.includes('Chờ xác minh kết nối'),
+    'token exchange alone must still be shown as unverified');
   return token.access_token;
 }
 
@@ -197,6 +209,26 @@ try {
   });
   assert.equal(login.status, 303);
   cookie = login.headers.get('set-cookie').split(';')[0];
+  // Offline devices must not pass the admin approval gate.
+  {
+    const info=await (await fetch(root+'/.well-known/oauth-authorization-server')).json();
+    const reg=await fetch(root+'/register',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({client_name:'Offline pending only',redirect_uris:['http://127.0.0.1:18799/callback'],token_endpoint_auth_method:'none',grant_types:['authorization_code'],response_types:['code']})});
+    assert.equal(reg.status,201);
+    const c=await reg.json();
+    const verifier=randomSecret(),challenge=createHash('sha256').update(verifier).digest('base64url');
+    const auth=new URL(info.authorization_endpoint);
+    for(const[k,v]of Object.entries({client_id:c.client_id,redirect_uri:'http://127.0.0.1:18799/callback',
+      response_type:'code',code_challenge:challenge,code_challenge_method:'S256',state:'offline',
+      scope:'mcp',resource:root+'/mcp'}))auth.searchParams.set(k,v);
+    const html=await (await fetch(auth)).text();
+    const id=html.match(/name="request" value="([^"]+)"/)?.[1];assert(id);
+    const denied=await fetch(root+'/approve',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({request:id,password:adminKey}),redirect:'manual'});
+    assert.equal(denied.status,503,'offline approval must be blocked');
+    const deniedPage=await (await fetch(root+'/dashboard?view=clients',{headers:{Cookie:cookie}})).text();
+    assert(!deniedPage.includes('Offline pending only'),'failed OAuth attempt must not appear as connected');
+  }
   const page = await fetch(root + '/dashboard', { headers: { Cookie: cookie } });
   assert.equal(page.status, 200);
   const pageHtml = await page.text();
@@ -303,6 +335,9 @@ try {
   const transport = new StreamableHTTPClientTransport(new URL(root + '/mcp'), { requestInit: { headers: { Authorization: 'Bearer ' + accessToken } } });
   await client.connect(transport); clientConnected = true;
   const list = await client.listTools();
+  const verifiedPage = await (await fetch(root + '/dashboard?view=clients', {headers:{Cookie:cookie}})).text();
+  assert(verifiedPage.includes('Karis multi-device E2E') && verifiedPage.includes('Đã xác minh kết nối MCP'),
+    'successful authenticated MCP connection must be displayed as verified');
   assert(list.tools.some(t => t.name === 'probe'), 'device tools should be merged by name');
   assert(list.tools.some(t => t.name === 'get_config'), 'full local Desktop Commander tools should be exposed');
   assert(list.tools.some(t => t.name === 'list_paired_devices'));

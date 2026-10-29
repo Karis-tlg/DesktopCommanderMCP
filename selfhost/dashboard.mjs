@@ -74,7 +74,11 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
       };
     });
     const html = renderConsoleView({
-      list, clients: Object.values(db.clients || {}), activities: db.activity || [],
+      // Never present raw Dynamic Client Registrations as authorized apps.
+      // Only clients proven through an authenticated MCP request are active.
+      list, clients: Object.values(db.clients || {}).filter(c=>!!c.verifiedAt),
+      awaitingClients: Object.values(db.clients || {}).filter(c=>!!c.approvedAt && !c.verifiedAt),
+      activities: db.activity || [],
       usageTotal: Number(db.usage?.totalCalls) || 0, maxDevices,
       endpoint: issuer.origin + '/mcp', agentPackageUrl,
       pendingLinks: pendingLinks.map(p => ({ deviceId:p.deviceId, displayName:p.displayName })),
@@ -155,7 +159,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
                   d.lastSeen, (d.tools || []).length, db.defaultDeviceId === d.id];
         }),
         calls: Number(db.usage?.totalCalls) || 0,
-        clients: Object.keys(db.clients || {}).sort(),
+        clients: Object.values(db.clients || {}).map(c=>[c.client_id,c.approvedAt||0,c.verifiedAt||0,c.lastMcpAt||0]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
         recent: (db.activity || []).slice(0, 20).map(a => [a.tool, a.device, a.status, a.durationMs, a.at])
       });
       const revision = digest(state).slice(0, 20);

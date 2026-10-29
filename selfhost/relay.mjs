@@ -40,19 +40,38 @@ if (!db.usage.byDevice || typeof db.usage.byDevice !== 'object') db.usage.byDevi
 if (!db.usage.byTool || typeof db.usage.byTool !== 'object') db.usage.byTool = {};
 if (!db.defaultDeviceId) db.defaultDeviceId = 'vps';
 const save = () => { const dir=path.dirname(dbPath); fs.mkdirSync(dir,{recursive:true,mode:0o700}); const f=dbPath+'.'+process.pid+'.tmp'; fs.writeFileSync(f,JSON.stringify(db),{mode:0o600,flag:'wx'}); fs.renameSync(f,dbPath); };
-const cleanup = () => { for(const col of ['codes','access','refresh']) for(const [k,v] of Object.entries(db[col])) if(v.exp < now()) delete db[col][k]; };
+const cleanup = () => {
+  for (const col of ['codes','access','refresh'])
+    for (const [k,v] of Object.entries(db[col])) if (v.exp < now()) delete db[col][k];
+  // Dynamic registration is not authorization. Expired, never-approved clients
+  // must not accumulate indefinitely from failed/retried connection attempts.
+  const protectedClients = new Set(['access','refresh','codes'].flatMap(col =>
+    Object.values(db[col] || {}).map(v => v.clientId)));
+  for (const [id,c] of Object.entries(db.clients)) {
+    if (!c.approvedAt && !c.verifiedAt && !protectedClients.has(id)
+        && Number(c.client_id_issued_at || 0) > 0
+        && Number(c.client_id_issued_at) < now() - 20 * 60) delete db.clients[id];
+  }
+};
 const expectedResource = (u) => !u || u.toString() === resource.toString();
 const issue = (clientId, scopes=['mcp']) => {
   const a=random(), r=random();
   db.access[digest(a)]={clientId,scopes,exp:now()+3600};
-  db.refresh[digest(r)]={clientId,scopes,exp:now()+30*86400}; save();
+  db.refresh[digest(r)]={clientId,scopes,exp:now()+30*86400};
+  if (db.clients[clientId]) db.clients[clientId].approvedAt ||= now();
+  save();
   return { access_token:a, refresh_token:r, token_type:'Bearer', expires_in:3600, scope:scopes.join(' ') };
 };
 const pending = new Map();
 const clientsStore = {
  getClient: async id => db.clients[id],
  registerClient: async client => {
+   cleanup();
    if(Object.keys(db.clients).length>=64) throw Error('Client registration capacity exceeded');
+   // Avoid consuming all registration slots during rapid OAuth retry loops.
+   const recent = Object.values(db.clients).filter(c => !c.approvedAt && !c.verifiedAt
+     && Number(c.client_id_issued_at) >= now()-10*60);
+   if (recent.length >= 16) throw Error('Too many unfinished OAuth registrations. Retry later.');
    const id=random();
    const c={...client,client_id:id,client_id_issued_at:now(),client_secret_expires_at:0,token_endpoint_auth_method:'none'};
    db.clients[id]=c; save(); return c;
@@ -62,9 +81,17 @@ const provider = {
  get clientsStore(){return clientsStore},
  authorize: async (client, params, res) => {
    if(!expectedResource(params.resource) || (params.scopes||[]).some(scope=>scope!=='mcp')) {res.status(400).send('Invalid OAuth resource or scope');return;}
-   const id=random(); pending.set(id,{clientId:client.client_id,params,exp:now()+300});
+   // Same browser retry should reuse an existing authorization request, not
+   // create a fresh pending entry every time the client retries the same state.
+   for (const [key,entry] of pending) if(entry.exp<=now()) pending.delete(key);
+   const fingerprint = JSON.stringify([client.client_id,params.redirectUri,params.state,
+      params.codeChallenge,params.resource?.toString(),params.scopes]);
+   const reused=[...pending].find(([,entry])=>entry.fingerprint===fingerprint);
+   if (pending.size>=32 && !reused) {res.status(429).send('Too many pending approvals. Please retry shortly.');return;}
+   const id=reused ? reused[0] : random();
+   if(!reused) pending.set(id,{clientId:client.client_id,params,exp:now()+600,fingerprint});
    const name=esc(client.client_name||'Unnamed MCP client');
-   res.status(200).type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Authorize Karis MCP</title><style>body{font:16px system-ui;max-width:440px;margin:12vh auto;padding:24px;background:#101820;color:#fff}input,button{font:inherit;padding:12px;margin-top:12px;width:100%;box-sizing:border-box}button{background:#15803d;color:white;border:0;border-radius:6px}small{color:#aaa}</style><h2>Authorize ${name}</h2><p>This application is requesting access to run file and terminal MCP tools on your connected device.</p><small>Only approve a client you trust. This grants powerful device access.</small><form action="/approve" method="post"><input type="hidden" name="request" value="${id}"><label>Admin approval password<input type="password" name="password" autocomplete="off" required></label><button type="submit">Authorize for 30 days</button></form>`);
+   res.status(200).type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Authorize Karis MCP</title><style>body{font:16px system-ui;max-width:440px;margin:12vh auto;padding:24px;background:#101820;color:#fff}input,button{font:inherit;padding:12px;margin-top:12px;width:100%;box-sizing:border-box}button{background:#15803d;color:white;border:0;border-radius:6px}small{color:#aaa}</style><h2>Authorize ${name}</h2><p>This application requests access to file and terminal MCP tools. Approval requires an online device that responds to a live ping.</p><small>Only approve a client you trust. This grants powerful device access.</small><form action="/approve" method="post"><input type="hidden" name="request" value="${id}"><label>Admin approval password<input type="password" name="password" autocomplete="off" required></label><button type="submit">Authorize for 30 days</button></form>`);
  },
  challengeForAuthorizationCode: async (_client,code) => {const entry=db.codes[digest(code)]; if(!entry||entry.exp<=now()) throw new InvalidGrantError('Expired authorization code'); return entry.challenge;},
  exchangeAuthorizationCode: async (client,code,_verifier,redirect,tokenResource) => {
@@ -89,12 +116,36 @@ const app=express();app.disable('x-powered-by');app.set('trust proxy', 'loopback
 app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:false,limit:'16kb'}));
 app.use(mcpAuthRouter({provider,issuerUrl:issuer,resourceServerUrl:resource,scopesSupported:['mcp'],resourceName:'Karis Desktop Commander MCP'}));
 let failures=new Map();
-app.post('/approve', (req,res)=>{
+app.post('/approve', async (req,res)=>{
  const ip=req.socket.remoteAddress||'local', f=failures.get(ip)||{n:0,exp:now()+900};if(f.exp<now()){f.n=0;f.exp=now()+900;}
  if(f.n>=8){res.status(429).send('Too many attempts');return;}
  const id=String(req.body?.request||''), entry=pending.get(id);
- if(!entry || entry.exp<now()){res.status(400).send('Authorization expired');return;}
+ if(!entry || entry.exp<=now()){
+   pending.delete(id);
+   res.status(410).type('html').send('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Yêu cầu xác nhận đã hết hạn</title><style>body{font:16px system-ui;background:#101820;color:#f5f7fa;max-width:550px;margin:10vh auto;padding:25px}a{color:#8bd4ee}</style><h1>Yêu cầu đã hết hạn</h1><p>Chưa cấp quyền cho ứng dụng. Hãy quay lại ChatGPT hoặc ứng dụng MCP, chọn kết nối lại để tạo yêu cầu mới. Không cần tạo thêm thiết bị.</p><p><a href="/dashboard?view=clients">Kiểm tra trạng thái kết nối</a></p></html>');
+   return;
+ }
  if(typeof req.body?.password !== 'string' || !equal(req.body.password,adminKey)){f.n++; failures.set(ip,f);res.status(403).send('Approval denied');return;}
+ // Admin password alone is not proof a device is usable. Check real agent
+ // responsiveness BEFORE issuing an OAuth authorization code.
+ const candidates = activeRecords().filter(d => devices.get(d.id)?.ws?.readyState===1);
+ const preferred = [recordFor(db.defaultDeviceId),...candidates].filter((d,i,a) =>
+   d && candidates.some(c=>c.id===d.id) && a.findIndex(x=>x?.id===d.id)===i);
+ let confirmed=false;
+ for(const device of preferred.slice(0,3)) {
+   try {
+     const reply=await rpc(device.id,'ping',{},3000);
+     // A completed ping RPC is proof of liveness for both the current JSON
+     // agent and older agents that respond with a plain-text pong.
+     if (reply && reply.isError!==true && Array.isArray(reply.content) && reply.content.length>0
+         && devices.get(device.id)?.ws?.readyState===1) {confirmed=true;break;}
+   } catch { /* Try another connected device, never issue an unverified grant. */ }
+ }
+ if(!confirmed){
+   res.status(503).type('html').send('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Thiết bị chưa sẵn sàng</title><style>body{font:16px system-ui;background:#101820;color:#f5f7fa;max-width:550px;margin:10vh auto;padding:25px}a{color:#8bd4ee}</style><h1>Chưa thể cấp quyền</h1><p>Chưa có thiết bị nào trả lời kiểm tra kết nối. Hãy bật agent trên VPS/PC rồi thử xác nhận lại trong vòng 5 phút. Không có mã cấp quyền nào được tạo.</p><p><a href="/dashboard?view=overview">Kiểm tra thiết bị</a></p></html>');
+   return;
+ }
+ if(pending.get(id)!==entry || entry.exp<=now()) {res.status(410).send('Authorization request expired; restart connection.');return;}
  pending.delete(id);failures.delete(ip);const code=random();const p=entry.params;
  db.codes[digest(code)]={clientId:entry.clientId,challenge:p.codeChallenge,redirect:p.redirectUri,scopes:p.scopes||['mcp'],resource:p.resource?.toString(),exp:now()+300};save();
  const destination=new URL(p.redirectUri);destination.searchParams.set('code',code);if(p.state) destination.searchParams.set('state',p.state);res.redirect(302,destination.href);
@@ -110,8 +161,8 @@ app.post('/settings',(req,res)=>{
   const id=String(req.body?.client||'');
   if(db.clients[id]) {delete db.clients[id];for(const col of ['access','refresh','codes']) for(const[k,v]of Object.entries(db[col]))if(v.clientId===id)delete db[col][k];save();}
  }
- const list=Object.values(db.clients).map(c=>`<li><b>${esc(c.client_name||'Unnamed MCP client')}</b><small> · ${esc(c.client_id.slice(0,10))}…</small><form method="post" action="/settings"><input type="hidden" name="client" value="${esc(c.client_id)}"><input type="password" name="password" required autocomplete="off" placeholder="Admin password"><button type="submit" name="action" value="revoke">Revoke this client</button></form></li>`).join('');
- res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Karis MCP Settings</title><style>body{font:16px system-ui;max-width:700px;margin:8vh auto;padding:25px;background:#101820;color:white}li{margin:20px 0}input,button{font:inherit;padding:10px;margin:8px}button{background:#245b6f;color:white;border:0;border-radius:5px}</style><h1>Connected OAuth clients</h1><p>${Object.keys(db.clients).length} clients registered. Revoke removes all of a client's access and refresh tokens.</p><ul>${list}</ul><p><a href="/settings">Back</a></p>`);
+ const list=Object.values(db.clients).filter(c=>!!c.approvedAt || !!c.verifiedAt).map(c=>`<li><b>${esc(c.client_name||'Unnamed MCP client')}</b><small> · ${esc(c.client_id.slice(0,10))}…</small><form method="post" action="/settings"><input type="hidden" name="client" value="${esc(c.client_id)}"><input type="password" name="password" required autocomplete="off" placeholder="Admin password"><button type="submit" name="action" value="revoke">Revoke this client</button></form></li>`).join('');
+ res.type('html').send(`<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Karis MCP Settings</title><style>body{font:16px system-ui;max-width:700px;margin:8vh auto;padding:25px;background:#101820;color:white}li{margin:20px 0}input,button{font:inherit;padding:10px;margin:8px}button{background:#245b6f;color:white;border:0;border-radius:5px}</style><h1>Connected OAuth clients</h1><p>${Object.values(db.clients).filter(c=>!!c.verifiedAt).length} verified clients; ${Object.values(db.clients).filter(c=>!!c.approvedAt && !c.verifiedAt).length} awaiting verification. Unapproved registrations are hidden. Revoke removes the client's access and refresh tokens.</p><ul>${list}</ul><p><a href="/settings">Back</a></p>`);
 });
 // Multi-device registry, routing and management tools.
 const MAX_DEVICES = Math.max(1, Number.parseInt(process.env.KARIS_MAX_DEVICES || '256', 10) || 256);
@@ -292,7 +343,8 @@ const handleMcp = async (req, res, forcedDevice = null) => {
           quota: 'No vendor 10,000-calls/month quota is enforced by this self-host',
           connectedDevices: devices.size,
           pairedDevices: activeRecords().length,
-          authorizedMcpClients: Object.keys(db.clients || {}).length,
+          authorizedMcpClients: Object.values(db.clients || {}).filter(c=>!!c.verifiedAt).length,
+          registeredMcpClients: Object.keys(db.clients || {}).length,
           totalToolCalls: Number(db.usage.totalCalls) || 0,
           defaultDevice: viewDevice(forcedRecord || recordFor(db.defaultDeviceId) || { id: '', alias: '', displayName: 'none', tools: [] })
         });
@@ -372,7 +424,20 @@ const appDevicePackage = process.env.KARIS_AGENT_PACKAGE_URL ||
 
 const appServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
-app.all(/^\/mcp\/?$/, auth, (req, res) => handleMcp(req, res));
+app.all(/^\/mcp\/?$/, auth, (req, res) => {
+  // A registered OAuth client is NOT connected. Mark verified only after
+  // a successful authenticated MCP protocol request to a live agent relay.
+  if(req.method==='POST' && ['initialize','tools/list','tools/call'].includes(req.body?.method)){
+    const clientId=req.auth?.clientId;
+    res.once('finish',()=>{
+      const client=clientId&&db.clients[clientId];
+      if(!client || res.statusCode<200 || res.statusCode>=300 || devices.size===0) return;
+      if (!client.verifiedAt) client.verifiedAt=now();
+      if (!client.lastMcpAt || now()-client.lastMcpAt>=60){client.lastMcpAt=now();save();}
+    });
+  }
+  return handleMcp(req,res);
+});
 app.all('/mcp/:linkKey/device/:deviceAlias', (req, res) => {
   if (!equal(req.params.linkKey, linkKey)) { res.status(404).send('Not found'); return; }
   const target = activeRecords().find(d => String(d.alias || '').toLowerCase() === String(req.params.deviceAlias || '').toLowerCase());
