@@ -7,7 +7,7 @@ sudo systemctl restart karis-mcp-agent.service
 
 for _ in $(seq 1 40); do
   health="$(curl -fsS --max-time 3 http://127.0.0.1:18791/healthz 2>/dev/null || true)"
-  if [[ -n "$health" ]] && printf '%s' "$health" | grep -q '"maxDevices":32' && printf '%s' "$health" | grep -q '"toolCount":' && printf '%s' "$health" | grep -q '"agent":true'; then
+  if [[ -n "$health" ]] && printf '%s' "$health" | grep -Eq '"maxDevices":[1-9][0-9]*' && printf '%s' "$health" | grep -q '"toolCount":' && printf '%s' "$health" | grep -q '"agent":true'; then
     printf '%s\n' "$health"
     echo 'Self-host relay and agent are online.'
     exit 0
