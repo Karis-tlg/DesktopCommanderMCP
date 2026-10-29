@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { controllerTools, callController } from './controllers.mjs';
 
 const args=process.argv.slice(2);
 const flag = name => {const ix=args.indexOf(name);return ix>=0?args[ix+1]:undefined};
@@ -62,7 +63,10 @@ export async function runAgent(){
  const transport=new StdioClientTransport({command:process.execPath,args:[entry,'--no-onboarding'],cwd:process.cwd(),env:{...process.env,HOME:childHome,DESKTOP_COMMANDER_DISABLE_TELEMETRY:'1',KARIS_DISABLE_TOOL_HISTORY:'1'},stderr:'pipe'});
  const client=new Client({name:'karis-private-agent',version:'0.1.0'},{capabilities:{}});
  await client.connect(transport);
- const {tools}=await client.listTools();console.log(`Local MCP ready: ${tools.length} tools`);
+ const {tools:baseTools}=await client.listTools();
+ const localControllers=controllerTools(process.platform);
+ const tools=[...baseTools,...localControllers];
+ console.log(`Local MCP ready: ${baseTools.length} base + ${localControllers.length} controller tools`);
  let stopped=false, live=null;
  const end=async()=>{stopped=true;if(live)live.close();await client.close().catch(()=>{});};
  process.once('SIGINT',()=>void end());process.once('SIGTERM',()=>void end());
@@ -86,7 +90,13 @@ export async function runAgent(){
       return;
      }
      if(data.kind!=='call')return;
-     try{const result=await client.callTool({name:data.args.name,arguments:data.args.arguments||{}},undefined,{timeout:48000});if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result}));}
+     try{
+      const name=data.args?.name;
+      const result=localControllers.some(t=>t.name===name)
+       ? await callController(name,data.args?.arguments||{})
+       : await client.callTool({name,arguments:data.args?.arguments||{}},undefined,{timeout:48000});
+      if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result}));
+     }
      catch(e){if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,error:e?.message||'Tool failed'}));}
     });
     socket.once('close',resolve);socket.once('error',resolve);
