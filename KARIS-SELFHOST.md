@@ -21,7 +21,7 @@ This fork keeps the MIT-licensed Desktop Commander local MCP tools and adds an i
 - Local endpoint: `http://127.0.0.1:18791/mcp`; local panel: `http://127.0.0.1:18791/dashboard`.
 - Services: `karis-mcp-relay.service` and `karis-mcp-agent.service`, enabled on boot.
 - Secrets: `runtime/private/`, owner-only. Never commit or share the admin password, OAuth tokens, or device pairing links.
-- **Deployment pending:** the source and GitHub prerelease are updated, but the running relay still reports the old tool count (50). Restart only the two Karis services with the command below; do not kill generic Node processes.
+- **Deployment pending:** the source and GitHub prerelease are updated, but the running relay still reports the old tool count (50), and the public `/dashboard` route currently returns 404. Restart only the two Karis services with the command below; after the health check passes, verify `/dashboard` returns 200 and the new tool set is present. Do not kill generic Node processes.
 
 ## Activate the current release
 
