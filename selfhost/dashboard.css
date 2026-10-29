@@ -1723,20 +1723,50 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
  .dashboard-body .control-dialog .device-options{right:auto;left:0;max-width:calc(95vw - 48px);min-width:min(320px,78vw)}
 }
 
-/* Device actions are shown in their own dialog, never inside a list row. */
-.dashboard-body .action-target{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-bottom:18px;border-bottom:1px solid #354350}
-.dashboard-body .action-target>div{display:grid;gap:3px;min-width:0}
-.dashboard-body .action-target strong{font-size:19px;font-weight:720;overflow-wrap:anywhere}
-.dashboard-body .action-target span:not(.default-label){font-size:14px;color:#aebdca}
-.dashboard-body .device-action-block{padding:20px 0;border-bottom:1px solid #354350}
-.dashboard-body .device-action-block h3{font-size:16px;margin:0 0 7px;color:#e6eff6}
-.dashboard-body .device-action-block p{font-size:14px;line-height:1.55;color:#aebeca;margin:0 0 14px}
-.dashboard-body .device-action-block form{display:grid;justify-items:start;gap:12px}
-.dashboard-body .device-action-block .button{max-width:100%;white-space:normal}
-.dashboard-body .device-action-block .confirm-label{font-size:14px;color:#d8e0e8}
-.dashboard-body .device-action-revoke{padding:18px 0;border-bottom:1px solid #354350}
-.dashboard-body .device-action-revoke>summary{cursor:pointer;font-size:15px;font-weight:630;color:#efa9a3}
-.dashboard-body .device-action-revoke>p{color:#b8c5cf;margin:13px 0;font-size:14px}
-.dashboard-body .device-action-revoke form{display:grid;gap:12px;justify-items:start}
-.dashboard-body #device-actions-dialog .dialog-footer{margin-top:20px}
-@media(max-width:500px){.dashboard-body #device-actions-dialog form .button{width:100%}}
+/* Compact non-modal device management: inline list + anchored native dropdown. */
+.dashboard-body .inline-device-manager{margin-top:17px;padding:22px;scroll-margin-top:20px}
+.dashboard-body .inline-device-manager[hidden]{display:none!important}
+.dashboard-body .inline-device-manager>.panel-head{margin-bottom:16px}
+.dashboard-body .inline-manager-scroll{max-height:min(64vh,630px);overflow-y:auto;overscroll-behavior:contain;padding-right:7px;scrollbar-width:thin;scrollbar-color:#526373 #15202b}
+.dashboard-body .inline-device-manager .device-tile{display:grid;grid-template-columns:44px minmax(0,1fr) auto auto;gap:13px;min-height:76px;align-items:center;padding:12px 0;border-top:1px solid #2a3946}
+.dashboard-body .inline-device-manager .device-tile:first-child{border-top:0}
+.dashboard-body .inline-device-manager .device-tile[hidden]{display:none!important}
+.dashboard-body .inline-device-manager .device-tools{grid-column:4;grid-row:1;justify-content:flex-end}
+.dashboard-body .inline-device-manager .device-connect{grid-column:3;grid-row:1}
+.dashboard-body .device-dropdown-panel{position:fixed;inset:auto;margin:0;box-sizing:border-box;z-index:100;width:344px;max-height:calc(100dvh - 20px);overflow-y:auto;overscroll-behavior:contain;padding:9px;background:#1b2631;border:1px solid #435666;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.6);color:#edf5fa;font-size:14px;scrollbar-width:thin;scrollbar-color:#526373 #1b2631}
+.dashboard-body .device-dropdown-panel:not(:popover-open){display:none}
+.dashboard-body .device-dropdown-title{display:block;font-size:15px;line-height:1.4;font-weight:720;padding:10px 11px 12px;border-bottom:1px solid #344553;overflow-wrap:anywhere}
+.dashboard-body .device-dropdown-default{display:flex;align-items:center;gap:7px;color:#86d7be;padding:12px 11px}
+.dashboard-body .device-dropdown-default .icon{width:15px;height:15px}
+.dashboard-body .device-dropdown-panel .dropdown-action,.dashboard-body .device-dropdown-panel .dropdown-disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:43px;padding:11px;border:0;background:transparent;text-align:left;color:#e0eaf1;border-radius:7px;font-size:14px;font-weight:580;cursor:pointer;list-style:none;white-space:normal}
+.dashboard-body .device-dropdown-panel .dropdown-action:hover,.dashboard-body .device-dropdown-panel .dropdown-disclosure>summary:hover{background:#2b3b49}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure>summary::-webkit-details-marker{display:none}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure>summary .icon{width:16px;height:16px;transition:transform .14s}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure[open]>summary .icon{transform:rotate(180deg)}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure{border-top:1px solid #344553}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure-body{padding:10px 11px 15px;display:grid;gap:10px;min-width:0}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure-body label,.dashboard-body .device-dropdown-panel .dropdown-label{font-size:12px;color:#b9cad7;font-weight:620}
+.dashboard-body .device-dropdown-panel .dropdown-copy{display:flex;align-items:stretch;gap:6px;min-width:0}
+.dashboard-body .device-dropdown-panel .dropdown-copy input{flex:1;width:0;min-width:0;height:37px;padding:8px;border-radius:6px;border:1px solid #405260;background:#111a23;color:#f0f5fb;font:12px ui-monospace,Consolas,monospace}
+.dashboard-body .device-dropdown-panel .dropdown-copy button{padding:5px 9px;min-height:37px;border:1px solid #445665;border-radius:7px;background:#2a3744;color:#e8f0f6;font-size:12px;cursor:pointer}
+.dashboard-body .device-dropdown-panel .dropdown-command{font:12px/1.55 ui-monospace,Consolas,monospace;color:#cbf0e6;overflow-wrap:anywhere;background:#101923;border:1px solid #364959;border-radius:8px;padding:10px;user-select:all}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure-body p{font-size:12px;line-height:1.5;color:#c9b9a5;margin:0}
+.dashboard-body .device-dropdown-panel .dropdown-disclosure-body form{display:grid;gap:10px}
+.dashboard-body .device-dropdown-panel .confirm-label{display:flex;align-items:flex-start;gap:8px;color:#e5bdba;font-size:13px}
+.dashboard-body .device-dropdown-panel .confirm-label input{margin-top:3px}
+.dashboard-body .device-dropdown-panel .dropdown-danger{width:100%;min-height:39px;padding:8px 12px;background:#542c29;border:1px solid #7d504a;color:#f9dfdb;border-radius:7px;font-size:13px;font-weight:650;cursor:pointer}
+.dashboard-body .device-dropdown-panel .dropdown-danger:hover{background:#713531}
+.dashboard-body .device-dropdown-panel .danger-disclosure>summary{color:#e7aca7}
+.dashboard-body .inline-device-manager .device-filter-bar{margin-bottom:6px}
+@media(max-width:800px){
+ .dashboard-body .inline-device-manager .device-tile{grid-template-columns:44px minmax(0,1fr) auto;gap:9px}
+ .dashboard-body .inline-device-manager .device-connect{grid-column:3;grid-row:1}
+ .dashboard-body .inline-device-manager .device-tools{grid-column:2/-1;grid-row:2;justify-content:flex-end}
+}
+@media(max-width:500px){
+ .dashboard-body .inline-device-manager{padding:16px}
+ .dashboard-body .inline-device-manager .device-tile{grid-template-columns:41px minmax(0,1fr);gap:8px}
+ .dashboard-body .inline-device-manager .device-connect{grid-column:2;grid-row:2}
+ .dashboard-body .inline-device-manager .device-tools{grid-column:2;grid-row:3;justify-content:flex-start}
+ .dashboard-body .device-dropdown-panel{font-size:14px}
+}

@@ -6,86 +6,96 @@
     const output = $('#copy-status');
     if (output) output.textContent = message;
   };
+  const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const filterDevices = () => {
     const search = $('#device-filter');
-    if (!search) return;
-    const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const root = $('#inline-device-manager');
+    if (!search || !root) return;
     const query = normalize(search.value.trim());
-    const items = [...document.querySelectorAll('#devices-dialog .device-tile')];
-    let visible = 0;
+    const items = [...root.querySelectorAll('[data-live-region="managed-devices"] .device-tile')];
+    let count = 0;
     for (const item of items) {
-      const visibleText = item.querySelector('.device-info')?.textContent || '';
-      const alias = item.querySelector('[data-device-actions]')?.dataset.alias || '';
-      const matches = normalize(visibleText + ' ' + alias).includes(query);
-      item.hidden = !matches;
-      if (matches) visible++;
+      const name = item.querySelector('.device-info')?.textContent || '';
+      const alias = item.querySelector('.device-dropdown-panel .dropdown-alias')?.textContent || '';
+      const matched = normalize(name + ' ' + alias).includes(query);
+      item.hidden = !matched;
+      if (matched) count++;
     }
-    const count = $('#device-filter-count');
-    if (count) count.textContent = visible + ' / ' + items.length + ' thiết bị';
-    const empty = $('#device-filter-empty');
-    if (empty) empty.hidden = visible !== 0;
+    $('#device-filter-count').textContent = count + ' / ' + items.length + ' thiết bị';
+    $('#device-filter-empty').hidden = count !== 0;
   };
-  document.addEventListener('input', event => {
-    if (event.target?.id === 'device-filter') filterDevices();
-  });
-
-  const openModal = (name, focusId) => {
+  const openModal = name => {
     const dialog = document.getElementById(name);
     if (!(dialog instanceof HTMLDialogElement)) return;
     if (!dialog.open) dialog.showModal();
-    if (name === 'devices-dialog') {
-      const field = $('#device-filter');
-      if (field) field.value = '';
-      filterDevices();
-    }
-    dialog.querySelectorAll('.device-selected').forEach(row => row.classList.remove('device-selected'));
-    if (focusId) {
-      const row = [...dialog.querySelectorAll('[data-device-id]')].find(el => el.dataset.deviceId === focusId);
-      if (row) {
-        row.scrollIntoView({block:'nearest'});
-        row.classList.add('device-selected');
-        (row.querySelector('button, summary') || row).focus({preventScroll:true});
-        return;
-      }
-    }
     if (name === 'add-device-dialog') dialog.querySelector('#device-name')?.focus();
-    else if (name === 'devices-dialog') $('#device-filter')?.focus();
     else dialog.querySelector('.dialog-head h2')?.focus({preventScroll:true});
   };
-
-  const openDeviceActions = trigger => {
-    const template = [...document.querySelectorAll('template[data-device-action-template]')]
-      .find(el => el.dataset.deviceActionTemplate === trigger.dataset.id);
-    if (!template) return;
-    const content = $('#device-actions-content');
-    content.replaceChildren(template.content.cloneNode(true));
-    openModal('device-actions-dialog');
+  const showDevices = (focusId, collapse = false) => {
+    const section = $('#inline-device-manager');
+    if (!section) return;
+    const shouldShow = !collapse && (section.hidden || !!focusId);
+    section.hidden = !shouldShow;
+    $('#show-all-devices')?.setAttribute('aria-expanded', String(shouldShow));
+    if (!shouldShow) { $('#show-all-devices')?.focus(); return; }
+    const row = focusId ? [...section.querySelectorAll('.device-tile')].find(x => x.dataset.deviceId === focusId) : null;
+    const search = $('#device-filter');
+    if (row) {
+      search.value = '';
+      filterDevices();
+      row.scrollIntoView({block:'nearest'});
+      row.querySelector('.device-options-trigger')?.focus({preventScroll:true});
+    } else {
+      section.scrollIntoView({block:'start'});
+      search.focus({preventScroll:true});
+    }
   };
+  document.addEventListener('input', event => { if (event.target?.id === 'device-filter') filterDevices(); });
+
+  // Native popovers are dropdowns in the browser's top layer, never modal windows.
+  const positionDropdown = panel => {
+    const trigger = document.querySelector('[popovertarget="' + panel.id + '"]');
+    if (!trigger) return;
+    const bounds = trigger.getBoundingClientRect();
+    const w = Math.min(344, window.innerWidth - 20);
+    panel.style.width = w + 'px';
+    panel.style.maxHeight = Math.max(160, window.innerHeight - 20) + 'px';
+    const height = Math.min(panel.scrollHeight, window.innerHeight - 20);
+    const below = window.innerHeight - bounds.bottom;
+    const top = below >= height + 9 ? bounds.bottom + 8 : Math.max(10, bounds.top - height - 8);
+    panel.style.left = Math.max(10, Math.min(bounds.right - w, window.innerWidth - w - 10)) + 'px';
+    panel.style.top = top + 'px';
+  };
+  document.addEventListener('toggle', event => {
+    const panel = event.target;
+    if (!(panel instanceof HTMLElement) || !panel.matches('[data-device-popover]')) return;
+    const button = document.querySelector('[popovertarget="' + panel.id + '"]');
+    button?.setAttribute('aria-expanded', String(event.newState === 'open'));
+    if (event.newState === 'open') positionDropdown(panel);
+    else if (managerNeedsSync) { managerNeedsSync = false; void refreshVisible(); }
+  }, true);
+  const closeDropdowns = () => document.querySelectorAll('[data-device-popover]:popover-open').forEach(panel => panel.hidePopover());
+  document.addEventListener('scroll', () => {
+    for (const panel of document.querySelectorAll('[data-device-popover]:popover-open')) {
+      const trigger = document.querySelector('[popovertarget="' + panel.id + '"]');
+      if (!trigger) { panel.hidePopover(); continue; }
+      const r = trigger.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > innerHeight) panel.hidePopover();
+      else positionDropdown(panel);
+    }
+  }, true);
+  window.addEventListener('resize', closeDropdowns);
 
   document.addEventListener('click', async event => {
+    const show = event.target.closest('[data-show-devices]');
+    if (show) { showDevices(show.dataset.deviceFocus || ''); return; }
+    if (event.target.closest('[data-hide-devices]')) { closeDropdowns(); showDevices('', true); return; }
     const start = event.target.closest('[data-open-dialog]');
-    if (start) {
-      openModal(start.dataset.openDialog, start.dataset.deviceFocus);
-      return;
-    }
+    if (start) { openModal(start.dataset.openDialog); return; }
     if (event.target.closest('[data-close-dialog]')) {
       event.target.closest('dialog')?.close();
       return;
     }
-    const details = event.target.closest('[data-connect-device]');
-    if (details) {
-      const name = details.dataset.deviceName || 'Thiết bị';
-      const alias = details.dataset.deviceAlias || 'device';
-      $('#connection-device-name').textContent = name;
-      $('#connection-device-alias').textContent = 'Alias: ' + alias;
-      const command = $('#connection-command');
-      command.value = 'npx --yes --package=' + (command.dataset.agentPackage || '') +
-        ' desktop-commander remote --endpoint <LINK_GHEP_NOI> --name ' + alias;
-      openModal('device-connection-dialog');
-      return;
-    }
-    const option = event.target.closest('[data-device-actions]');
-    if (option) { openDeviceActions(option); return; }
     const copy = event.target.closest('[data-copy-target]');
     if (copy) {
       const field = document.getElementById(copy.dataset.copyTarget);
@@ -123,7 +133,7 @@
 
   let fetching = false;
   let needAnother = false;
-  let dirtyModal = false;
+  let managerNeedsSync = false;
   let previousRevision = null;
   let latestEvent = Date.now();
 
@@ -140,24 +150,25 @@
         return;
       }
       const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
-      for (const name of ['metrics','preview-devices','recent-activities','activity-list','activity-pagination','client-list','device-full-list','modal-device-list','mcp-status']) {
+      for (const name of ['metrics','preview-devices','recent-activities','activity-list','activity-pagination','client-list','device-full-list','managed-devices','mcp-status']) {
         const selector = '[data-live-region="' + name + '"]';
         const oldNode = $(selector), newNode = parsed.querySelector(selector);
         if (!oldNode || !newNode) continue;
-        if (oldNode.closest('dialog[open]')) {
-          // Keep input and expanded controls intact while refreshing live status.
-          if (name === 'modal-device-list') {
-            const currentRows = [...oldNode.querySelectorAll('[data-device-id]')];
-            const nextRows = new Map([...newNode.querySelectorAll('[data-device-id]')].map(el => [el.dataset.deviceId, el]));
-            for (const row of currentRows) {
-              const replacement = nextRows.get(row.dataset.deviceId)?.querySelector('.status-badge');
-              const badge = row.querySelector('.status-badge');
-              if (replacement && badge && replacement.outerHTML !== badge.outerHTML) {
-                badge.replaceWith(replacement.cloneNode(true));
-              }
+        const openDevicePopover = !!document.querySelector('[data-device-popover]:popover-open');
+        if ((name === 'managed-devices' && !$('#inline-device-manager')?.hidden) ||
+            (name === 'device-full-list' && openDevicePopover)) {
+          if (openDevicePopover) {
+            const incoming = new Map([...newNode.querySelectorAll('[data-device-id]')].map(row => [row.dataset.deviceId,row]));
+            for (const row of oldNode.querySelectorAll('[data-device-id]')) {
+              const status = row.querySelector('.status-badge');
+              const fresh = incoming.get(row.dataset.deviceId)?.querySelector('.status-badge');
+              if (status && fresh && status.outerHTML !== fresh.outerHTML) status.replaceWith(fresh.cloneNode(true));
             }
+            managerNeedsSync = true;
+            continue;
           }
-          dirtyModal = true;
+          oldNode.replaceWith(newNode);
+          if (name === 'managed-devices') filterDevices();
           continue;
         }
         oldNode.replaceWith(newNode);
@@ -173,10 +184,6 @@
       if (needAnother) { needAnother = false; void refreshVisible(); }
     }
   };
-
-  document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('close', () => {
-    if (dirtyModal) { dirtyModal = false; void refreshVisible(); }
-  }));
 
   // Native SSE reconnects automatically. No polling loops or public status endpoints.
   if ('EventSource' in window) {

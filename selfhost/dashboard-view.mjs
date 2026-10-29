@@ -80,7 +80,7 @@ function clientRow(c) {
 }
 
 
-export function renderConsoleView({ list, clients, activities, usageTotal, maxDevices, endpoint, agentPackageUrl, pendingLinks = [], pendingLink = null, message, csrfToken, activityPage = 1, view = 'overview' }) {
+export function renderConsoleView({ list, clients, awaitingClients = [], activities, usageTotal, maxDevices, endpoint, agentPackageUrl, pendingLinks = [], pendingLink = null, message, csrfToken, activityPage = 1, view = 'overview' }) {
   const online = list.filter(d => d.online).length;
   const valid = ['overview','activity','clients','security','devices','connection'];
   const current = valid.includes(view) ? view : 'overview';
@@ -92,29 +92,37 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
   const status = d => '<span class="status-badge ' + (d.online ? 'connected' : 'disconnected') + '"><span class="status-dot ' + (d.online ? 'is-online' : '') + '"></span>' + (d.online ? 'Trực tuyến' : 'Ngoại tuyến') + '</span>';
   const platform = d => /win/i.test(d.platform) ? 'monitor' : /mac|darwin/i.test(d.platform) ? 'laptop' : /linux/i.test(d.platform) ? 'server' : 'globe';
   const platformLabel = d => /win/i.test(d.platform) ? 'Windows' : /mac|darwin/i.test(d.platform) ? 'macOS' : /linux/i.test(d.platform) ? 'Linux / VPS' : 'Thiết bị';
-  const deviceActionTemplate = d => {
-    const path = '/dashboard/devices/' + encodeURIComponent(d.id);
-    return '<template data-device-action-template="' + esc(d.id) + '">' +
-      '<div class="action-target"><div><strong>' + esc(d.displayName || d.alias) + '</strong><span>' + esc(platformLabel(d)) + '</span></div>' +
-      (d.isDefault ? '<span class="default-label">' + ico('shield') + ' Mặc định</span>' : '') + '</div>' +
-      '<div class="device-action-block"><h3>Thiết bị mặc định</h3>' +
-      (d.isDefault ? '<p>Đang được sử dụng khi không chỉ định máy đích.</p>' :
-        postForm(path + '/default','<button type="submit" class="button subtle">Đặt làm mặc định</button>')) + '</div>' +
-      '<div class="device-action-block"><h3>Ghép nối lại</h3><p>Cấp lại khóa sẽ ngắt kết nối hiện tại. Chỉ thực hiện khi cần ghép nối lại máy.</p>' +
-      postForm(path + '/rotate','<label class="confirm-label"><input type="checkbox" name="confirm" value="rotate" required> Tôi hiểu kết nối hiện tại sẽ bị ngắt</label><button type="submit" class="button danger">Cấp lại khóa</button>', 'device-action-rotate') +
-      '</div><details class="device-action-revoke"><summary>Thu hồi quyền thiết bị</summary><p>Thiết bị sẽ không thể kết nối lại bằng khóa hiện tại.</p>' +
-      postForm(path + '/revoke','<label class="confirm-label"><input type="checkbox" required> Xác nhận thu hồi thiết bị</label><button type="submit" class="button danger">Thu hồi quyền</button>') + '</details>' +
-      '<div class="dialog-footer"><button type="button" class="button subtle" data-close-dialog>Đóng</button></div></template>';
+  const deviceDropdown = d => {
+    const id = encodeURIComponent(d.id), path = '/dashboard/devices/' + id;
+    const endpointId = 'device-endpoint-' + id;
+    const command = 'npx --yes --package=' + agentPackageUrl + ' desktop-commander remote --endpoint <LINK_GHEP_NOI> --name ' + d.alias;
+    return '<div id="device-menu-' + esc(d.id) + '" class="device-dropdown-panel" popover="auto" data-device-popover>' +
+      '<strong class="device-dropdown-title">' + esc(d.displayName || d.alias) + '</strong><span class="dropdown-alias">' + esc(d.alias) + '</span>' +
+      (d.isDefault ? '<span class="device-dropdown-default">' + ico('shield') + ' Máy mặc định</span>' :
+        postForm(path + '/default', '<button type="submit" class="dropdown-action">Đặt làm mặc định</button>')) +
+      '<details class="dropdown-disclosure"><summary>Xem kết nối ' + ico('chevron') + '</summary>' +
+      '<div class="dropdown-disclosure-body"><label for="' + esc(endpointId) + '">MCP endpoint</label><div class="dropdown-copy">' +
+      '<input id="' + esc(endpointId) + '" readonly value="' + esc(endpoint) + '">' +
+      '<button type="button" data-copy-target="' + esc(endpointId) + '">Sao chép</button></div>' +
+      '<span class="dropdown-label">Mẫu lệnh thiết bị</span><code class="dropdown-command">' + esc(command) + '</code>' +
+      '<p>Khóa đang sử dụng không thể xem lại. Không cấp lại khóa nếu máy vẫn kết nối tốt.</p></div></details>' +
+      '<details class="dropdown-disclosure"><summary>Ghép nối lại ' + ico('chevron') + '</summary>' +
+      '<div class="dropdown-disclosure-body"><p>Cấp lại khóa sẽ ngắt kết nối hiện tại.</p>' +
+      postForm(path + '/rotate', '<label class="confirm-label"><input type="checkbox" name="confirm" value="rotate" required> Tôi xác nhận thay khóa kết nối</label>' +
+      '<button type="submit" class="dropdown-danger">Cấp lại khóa</button>') + '</div></details>' +
+      '<details class="dropdown-disclosure danger-disclosure"><summary>Thu hồi quyền ' + ico('chevron') + '</summary>' +
+      '<div class="dropdown-disclosure-body"><p>Thiết bị sẽ không thể sử dụng khóa hiện tại.</p>' +
+      postForm(path + '/revoke', '<label class="confirm-label"><input type="checkbox" required> Tôi xác nhận thu hồi</label>' +
+      '<button type="submit" class="dropdown-danger">Thu hồi thiết bị</button>') + '</div></details></div>';
   };
   const deviceTile = (d, full = false) => {
     const id = encodeURIComponent(d.id);
     const actions = full ?
       '<div class="device-tools">' +
-        '<button type="button" class="button subtle" data-connect-device data-device-name="' + esc(d.displayName || d.alias) + '" data-device-alias="' + esc(d.alias) + '">Xem kết nối</button>' +
-        (recentlyIssued.has(d.id) ? '<a class="button pair-view" href="/dashboard?view=overview&amp;pair=' + id + '">Xem lệnh vừa tạo</a>' : '') +
-        '<button type="button" class="button subtle device-options-trigger" data-device-actions data-id="' + esc(d.id) + '" data-name="' + esc(d.displayName || d.alias) + '" data-alias="' + esc(d.alias) + '" data-platform="' + esc(platformLabel(d)) + '" data-default="' + (d.isDefault ? 'true' : 'false') + '" data-protected="' + (d.protected ? 'true' : 'false') + '">Tùy chọn ' + ico('chevron') + '</button></div>' :
-      '<button type="button" class="button subtle manage-button" data-open-dialog="devices-dialog" data-device-focus="' + esc(d.id) + '">Quản lý ' + ico('arrow') + '</button>';
-    return '<article class="device-tile" data-device-id="' + esc(d.id) + '"><span class="device-icon">' + ico(platform(d)) + '</span><div class="device-info"><strong>' + esc(d.displayName || d.alias) + '</strong><span class="device-sub">' + esc(platformLabel(d)) + (d.isDefault ? ' · Mặc định' : '') + '</span></div><div class="device-connect">' + status(d) + '</div>' + actions + (full ? deviceActionTemplate(d) : '') + '</article>';
+        (recentlyIssued.has(d.id) ? '<a class="button pair-view" href="/dashboard?view=overview&amp;pair=' + id + '">Lệnh vừa tạo</a>' : '') +
+        '<button type="button" class="button subtle device-options-trigger" popovertarget="device-menu-' + esc(d.id) + '" popovertargetaction="toggle" aria-expanded="false" aria-label="Tùy chọn cho ' + esc(d.displayName || d.alias) + '">Tùy chọn ' + ico('chevron') + '</button></div>' :
+      '<button type="button" class="button subtle manage-button" data-show-devices data-device-focus="' + esc(d.id) + '">Quản lý ' + ico('arrow') + '</button>';
+    return '<article class="device-tile" data-device-id="' + esc(d.id) + '"><span class="device-icon">' + ico(platform(d)) + '</span><div class="device-info"><strong>' + esc(d.displayName || d.alias) + '</strong><span class="device-sub">' + esc(platformLabel(d)) + (d.isDefault ? ' · Mặc định' : '') + '</span></div><div class="device-connect">' + status(d) + '</div>' + actions + (full ? deviceDropdown(d) : '') + '</article>';
   };
   const devicePreview = list.slice(0,4).map(d => deviceTile(d)).join('') || '<div class="empty">Chưa có thiết bị. Thêm thiết bị để bắt đầu.</div>';
   const allDevices = list.map(d => deviceTile(d,true)).join('') || '<div class="empty">Chưa có thiết bị nào.</div>';
@@ -125,9 +133,14 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
   }).join('') : '<li class="empty">Chưa có hoạt động gần đây.</li>');
   const clientsRows = clients.length ? clients.map(c => {
     const id=String(c.client_id || '');
-    return '<li class="client-row"><span class="client-icon">' + ico('link') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong><small>ID ' + esc(id.slice(0, 12)) + '…</small></div><details><summary class="button subtle">Thu hồi</summary>' +
+    return '<li class="client-row"><span class="client-icon">' + ico('link') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong><small>ID ' + esc(id.slice(0, 12)) + '… · Đã xác minh kết nối MCP' + (c.lastMcpAt ? ' · Lần cuối ' + esc(new Date(c.lastMcpAt*1000).toLocaleString('vi-VN')) : '') + '</small></div><details><summary class="button subtle">Thu hồi</summary>' +
     postForm('/dashboard/clients/'+encodeURIComponent(id)+'/revoke','<label class="confirm-label"><input type="checkbox" required> Xác nhận thu hồi OAuth</label><button type="submit" class="button danger">Thu hồi quyền</button>') + '</details></li>';
   }).join('') : '<li class="empty">Chưa cấp quyền cho ứng dụng nào.</li>';
+  const awaitingRows = awaitingClients.slice(0,10).map(c => {
+    const id=String(c.client_id || '');
+    return '<li class="client-row"><span class="client-icon">' + ico('clock') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong><small>Đã đổi token, chưa kết nối MCP thành công · ID ' + esc(id.slice(0,12)) + '…</small></div><details><summary class="button subtle">Thu hồi</summary>' +
+      postForm('/dashboard/clients/'+encodeURIComponent(id)+'/revoke','<label class="confirm-label"><input type="checkbox" required> Xác nhận thu hồi</label><button type="submit" class="button danger">Thu hồi</button>') + '</details></li>';
+  }).join('');
   const modal = (id,title,body,wide=false,extra='') => '<dialog id="' + id + '" class="control-dialog' + (wide ? ' wide' : '') + '"' + extra + ' aria-labelledby="' + id + '-title"><div class="dialog-head"><h2 id="' + id + '-title" tabindex="-1">' + title + '</h2><button type="button" class="icon-button" data-close-dialog aria-label="Đóng cửa sổ">' + ico('x') + '</button></div><div class="dialog-body">' + body + '</div></dialog>';
   const addForm = '<p class="dialog-lead">Thêm tên để phân biệt máy. Liên kết kết nối sẽ xuất hiện sau khi tạo.</p>' +
     postForm('/dashboard/devices/new',
@@ -157,10 +170,16 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
       '<div class="metric"><span>' + ico(ic) + esc(name) + '</span><strong>' + fmt(n) + '</strong></div>').join('') + '</div>';
   const overview = '<section class="console-view" data-view="overview"><div class="page-head"><div><h1>Tổng quan</h1></div>' + button('Thêm thiết bị','plus','add-device-dialog','button primary add-trigger') + '</div>' +
     metrics + '<div class="overview-grid"><section class="panel devices-panel"><div class="panel-head"><h2>Thiết bị <span class="section-count" data-device-total>' + fmt(list.length) + '</span></h2><div class="panel-actions">' +
-    button('Xem tất cả','arrow','devices-dialog','button text-action') + '</div></div><div class="device-list" data-live-region="preview-devices">' + devicePreview + '</div></section>' +
+    '<button type="button" class="button text-action" id="show-all-devices" data-show-devices aria-expanded="false" aria-controls="inline-device-manager">' + ico('arrow') + ' Xem tất cả</button>' + '</div></div><div class="device-list" data-live-region="preview-devices">' + devicePreview + '</div></section>' +
     '<section class="panel mcp-panel"><div class="panel-head"><h2>' + ico('link') + ' Kết nối MCP</h2></div>' +
     '<label for="mcp-endpoint">Địa chỉ MCP</label><div class="endpoint-control"><input id="mcp-endpoint" class="copy-field" value="' + esc(endpoint) + '" readonly aria-label="Địa chỉ máy chủ MCP"><button type="button" class="button subtle" data-copy-target="mcp-endpoint">' + ico('link') + ' Sao chép</button></div>' +
-    '<div class="mcp-live" data-live-region="mcp-status"><span class="status-dot' + (online ? ' is-online' : '') + '"></span><strong>' + (online ? fmt(online) + ' thiết bị sẵn sàng' : 'Chưa có thiết bị trực tuyến') + '</strong><a href="/dashboard?view=clients">' + fmt(clients.length) + ' ứng dụng được cấp quyền</a></div></section></div>' +
+    '<div class="mcp-live" data-live-region="mcp-status"><span class="status-dot' + (online ? ' is-online' : '') + '"></span><strong>' + (online ? fmt(online) + ' thiết bị sẵn sàng' : 'Chưa có thiết bị trực tuyến') + '</strong><a href="/dashboard?view=clients">' + fmt(clients.length) + ' ứng dụng đã kết nối</a></div></section></div>' +
+    '<section id="inline-device-manager" class="panel inline-device-manager" hidden aria-label="Quản lý toàn bộ thiết bị">' +
+    '<div class="panel-head"><h2>Quản lý thiết bị</h2><button type="button" class="button subtle" data-hide-devices>Thu gọn ' + ico('chevron') + '</button></div>' +
+    '<div class="device-filter-bar"><label for="device-filter">Tìm thiết bị<input type="search" id="device-filter" placeholder="Tên, alias, hệ điều hành" autocomplete="off"></label>' +
+    '<span id="device-filter-count" role="status" aria-live="polite">' + fmt(list.length) + ' thiết bị</span></div>' +
+    '<div class="inline-manager-scroll"><div class="device-list" data-live-region="managed-devices">' + allDevices + '</div>' +
+    '<p id="device-filter-empty" class="empty" hidden>Không có thiết bị phù hợp.</p></div></section>' +
     '<section class="panel recent-panel"><div class="panel-head"><h2>Hoạt động gần đây</h2><a class="button text-action" href="/dashboard?view=activity">Xem chi tiết ' + ico('arrow') + '</a></div>' +
     '<ul class="activity-list" data-live-region="recent-activities">' + activitiesRows(activities.slice(0,4)) + '</ul></section></section>';
   const viewPage = (key,title,body) => '<section class="console-view" data-view="' + key + '"><div class="page-head"><h1>' + title + '</h1></div>' + body + '</section>';
@@ -179,18 +198,16 @@ export function renderConsoleView({ list, clients, activities, usageTotal, maxDe
     (currentPage < totalPages ? '<a class="button subtle" href="' + pageUrl(currentPage+1) + '" rel="next">Sau</a>' : '<span class="button subtle disabled" aria-disabled="true">Sau</span>') +
     '</div></nav>';
   const activityPageView = viewPage('activity','Hoạt động','<div class="panel"><div class="panel-head"><h2>Lịch sử hoạt động</h2></div><ul class="activity-list" data-live-region="activity-list">' + activitiesRows(activities.slice(start,start+pageSize)) + '</ul>' + pagination + '</div>');
-  const clientsPage = viewPage('clients','Quyền truy cập','<div class="panel"><div class="panel-head"><h2>Ứng dụng được cấp quyền</h2></div><ul class="client-list" data-live-region="client-list">' + clientsRows + '</ul></div>');
+  const clientsPage = viewPage('clients','Quyền truy cập',
+    '<div class="panel"><div class="panel-head"><h2>Ứng dụng đã xác minh kết nối</h2></div><p class="muted">Chỉ hiển thị ứng dụng đã dùng token hợp lệ và kết nối MCP thành công. Đăng ký OAuth hoặc mở trang xác nhận chưa phải là cấp quyền.</p><ul class="client-list" data-live-region="client-list">' + clientsRows + '</ul></div>' +
+    (awaitingClients.length ? '<div class="panel"><div class="panel-head"><h2>Chờ xác minh kết nối ('+fmt(awaitingClients.length)+')</h2></div><ul class="client-list">' + awaitingRows + '</ul></div>' : ''));
   const securityPage = viewPage('security','Bảo mật','<div class="panel security-panel"><h2>Bảo vệ kết nối</h2><p>Chỉ chia sẻ khóa ghép nối với thiết bị bạn tin tưởng. Thu hồi quyền có thể ngắt thiết bị đang chạy.</p><details class="danger-option"><summary class="button subtle">Thao tác nguy hiểm ' + ico('chevron') + '</summary>' +
     postForm('/dashboard/devices/revoke-all','<label class="confirm-label"><input type="checkbox" name="confirm" value="yes" required> Tôi hiểu mọi thiết bị sẽ bị ngắt</label><button type="submit" class="button danger">Thu hồi toàn bộ thiết bị</button>') + '</details></div>');
   // Keep old deep links functional; navigation now prioritizes user-requested overview dialogs.
   const devicePage = viewPage('devices','Thiết bị', '<div class="panel"><div class="panel-head"><h2>Quản lý thiết bị</h2>' + button('Thêm thiết bị','plus','add-device-dialog','button primary') + '</div><div class="device-list" data-live-region="device-full-list">' + allDevices + '</div></div>');
   const connectionPage = viewPage('connection','Kết nối MCP','<div class="panel mcp-panel"><h2>Địa chỉ MCP</h2><input class="copy-field" id="mcp-secondary" readonly value="' + esc(endpoint) + '"><button type="button" class="button subtle" data-copy-target="mcp-secondary">Sao chép</button></div>');
   const views = {overview,activity:activityPageView,clients:clientsPage,security:securityPage,devices:devicePage,connection:connectionPage};
-  const dialogs = modal('add-device-dialog','Thêm thiết bị',addForm) +
-    modal('devices-dialog','Quản lý thiết bị',
-      '<div class="device-filter-bar"><label for="device-filter">Tìm thiết bị<input type="search" id="device-filter" placeholder="Tên thiết bị, alias, hệ điều hành" autocomplete="off"></label><span id="device-filter-count" role="status" aria-live="polite">' + fmt(list.length) + ' thiết bị</span></div>' +
-      '<div class="dialog-list" data-live-region="modal-device-list">' + allDevices + '</div>' +
-      '<p id="device-filter-empty" class="empty" hidden>Không tìm thấy thiết bị phù hợp.</p>',true) + deviceConnection + deviceActions + issued;
+  const dialogs = modal('add-device-dialog','Thêm thiết bị',addForm) + issued;
   const content = '<div class="app-shell">' + sidebar + '<div class="main-wrap">' + top + '<main class="workspace">' +
     (message?'<div class="notice" role="status">'+esc(message)+'</div>':'') + views[current] +
     '</main></div></div>' + dialogs + '<span id="copy-status" class="sr-only" role="status" aria-live="polite"></span>' +
