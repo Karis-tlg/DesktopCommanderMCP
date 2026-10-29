@@ -71,7 +71,7 @@ async function waitForHealth() {
 }
 async function addDevice(displayName, alias, simulateProxyHost = false) {
   const form = new URLSearchParams({ displayName, alias }).toString();
-  let status;
+  let status, pairingLocation = '/dashboard';
   if (simulateProxyHost) {
     const target = new URL(root + '/dashboard/devices/new');
     status = await new Promise((resolve, reject) => {
@@ -81,10 +81,10 @@ async function addDevice(displayName, alias, simulateProxyHost = false) {
           Cookie: cookie, Origin: root, 'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(form), Host: 'relay-internal.invalid:18791'
         }
-      }, response => { response.resume(); response.on('end', () => resolve(response.statusCode)); });
+      }, response => { response.resume(); response.on('end', () => resolve({status:response.statusCode,location:response.headers.location})); });
       request.on('error', reject);
       request.end(form);
-    });
+    }).then(result => { pairingLocation = result.location || '/dashboard'; return result.status; });
   } else {
     const r = await fetch(root + '/dashboard/devices/new', {
       method: 'POST',
@@ -93,9 +93,11 @@ async function addDevice(displayName, alias, simulateProxyHost = false) {
       redirect: 'manual'
     });
     status = r.status;
+    pairingLocation = r.headers.get('location') || '/dashboard';
   }
   assert.equal(status, 303, 'create device must redirect even when proxy rewrites Host');
-  const page = await fetch(root + '/dashboard', { headers: { Cookie: cookie } });
+  assert(pairingLocation.includes('&pair='),'pair link must be explicitly displayed only on the paired-device page');
+  const page = await fetch(new URL(pairingLocation,root), { headers: { Cookie: cookie } });
   assert.equal(page.status, 200);
   const html = await page.text();
   const match = html.match(/\/pair\/([A-Za-z0-9_-]{40,})/);
@@ -270,9 +272,12 @@ try {
   await mockAgent(macToken, 'macbook');
   const agentConfigDir = path.join(testDir, 'real-agent-config');
   const agentHome = path.join(testDir, 'real-agent-home');
+  // Isolate test agent from this VPS's real production pairing environment.
+  const isolatedEnv = {...process.env};
+  for (const key of ['KARIS_AGENT_TOKEN','KARIS_RELAY_URL','KARIS_AGENT_CONFIG_DIR','KARIS_AGENT_DEVICE_NAME','KARIS_MCP_HOME']) delete isolatedEnv[key];
   realAgent = spawn(process.execPath, [path.join(sourceRoot, 'dist', 'index.js'), 'remote', '--endpoint', root + '/pair/' + realAgentToken, '--name', 'local_agent', '--no-save'], {
     cwd: sourceRoot,
-    env: { ...process.env, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.4' },
+    env: { ...isolatedEnv, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.4' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   realAgent.stdout.pipe(relayLog);
@@ -281,10 +286,17 @@ try {
   while (Date.now() - agentWaitStart < 12000) {
     const h = await (await fetch(root + '/healthz')).json();
     if (h.connectedDevices >= 4) break;
-    if (realAgent.exitCode !== null) throw new Error('Real agent exited before pairing. Log: ' + fs.readFileSync(path.join(testDir, 'relay.log'), 'utf8'));
+    if (realAgent.exitCode !== null) throw new Error('Real test agent exited before pairing: code ' + realAgent.exitCode);
     await wait(100);
   }
-  assert((await (await fetch(root + '/healthz')).json()).connectedDevices >= 4, 'real Desktop Commander agent should connect');
+  const agentHealth = await (await fetch(root + '/healthz')).json();
+  if (agentHealth.connectedDevices < 4) {
+    const diagnosis = fs.readFileSync(path.join(testDir, 'relay.log'),'utf8')
+      .replace(/\/pair\/[A-Za-z0-9_-]{24,}/g, '/pair/[REDACTED]')
+      .replace(new RegExp(realAgentToken,'g'),'[REDACTED]')
+      .split('\n').filter(line => /error|fail|connect|agent|retry|refused|401|403|404/i.test(line)).slice(-16).join('\n').slice(-2000);
+    throw new Error('real Desktop Commander agent did not connect: '+JSON.stringify(agentHealth)+'; recent safe diagnostics: '+diagnosis);
+  }
 
   const accessToken = await oauthClient();
   client = new Client({ name: 'karis-multi-device-test', version: '1.0.0' }, { capabilities: {} });
@@ -345,7 +357,7 @@ try {
   assert.equal(stats.quota, 'none');
   assert(stats.totalToolCalls >= 4);
   const dashboardAfterCalls = await (await fetch(root + '/dashboard?view=activity', { headers: { Cookie: cookie } })).text();
-  assert(dashboardAfterCalls.includes('Lịch sử gần đây'));
+  assert(dashboardAfterCalls.includes('Lịch sử hoạt động'));
   assert(dashboardAfterCalls.includes('probe'));
   const overviewAfterCalls = await (await fetch(root + '/dashboard?view=overview', { headers: { Cookie: cookie } })).text();
   assert(overviewAfterCalls.includes('Hoạt động gần đây'));

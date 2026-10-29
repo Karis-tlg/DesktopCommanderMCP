@@ -20,6 +20,12 @@ const admin=secret(), agent=secret(), link=secret(), vpsToken=secret(), pcToken=
 const file=(name,value)=>fs.writeFileSync(path.join(dir,name),value+'\n',{mode:0o600});
 file('admin.key',admin);file('agent.key',agent);file('link.key',link);
 const now=Math.floor(Date.now()/1000);
+const additionalDevices=process.env.KARIS_UI_STRESS === '1' ? 250 : 65;
+const activityEntries=process.env.KARIS_UI_STRESS === '1' ? 498 : 58;
+const simulatedDevices=Object.fromEntries(Array.from({length:additionalDevices},(_,i)=>{
+  const id='mock-'+String(i+1).padStart(3,'0');
+  return [id,{id,alias:id,displayName:'Test Desktop '+String(i+1).padStart(3,'0'),tokenHash:digest(secret()),platform:i%3===0?'win32':i%3===1?'linux':'darwin',tools:[],createdAt:now-3600,lastSeen:now-300,protected:false,agentVersion:'test'}];
+}));
 const tools=Array.from({length:25},(_,i)=>({name:'tool_'+i,description:'Local device tool',inputSchema:{type:'object',properties:{}}}));
 fs.writeFileSync(path.join(dir,'db.json'), JSON.stringify({
   clients: {'demo':{client_id:'demo-client-just-for-ui',client_name:'ChatGPT Connector'}},
@@ -27,16 +33,12 @@ fs.writeFileSync(path.join(dir,'db.json'), JSON.stringify({
   devices:{
     vps:{id:'vps',alias:'vps',displayName:'VPS Production',tokenHash:digest(vpsToken),platform:'linux',tools,createdAt:now-86400,lastSeen:now,protected:true,agentVersion:'preview'},
     'pc-one':{id:'pc-one',alias:'kha_pc',displayName:'Windows Workstation',tokenHash:digest(pcToken),platform:'win32',tools,createdAt:now-3600,lastSeen:now,protected:false,agentVersion:'preview'},
-    'mac-one':{id:'mac-one',alias:'macbook',displayName:'MacBook cá nhân',tokenHash:digest(secret()),platform:'darwin',tools:[],createdAt:now-5400,lastSeen:now-1200,protected:false,agentVersion:'preview'}
+    'mac-one':{id:'mac-one',alias:'macbook',displayName:'MacBook cá nhân',tokenHash:digest(secret()),platform:'darwin',tools:[],createdAt:now-5400,lastSeen:now-1200,protected:false,agentVersion:'preview'},
+    ...simulatedDevices
   },
   defaultDeviceId:'vps',
   usage:{totalCalls:1284,byDevice:{},byTool:{},lastCallAt:now},
-  activity:[
-    {tool:'read_file',device:'vps',status:'ok',durationMs:38,at:new Date().toISOString()},
-    {tool:'list_directory',device:'kha_pc',status:'ok',durationMs:59,at:new Date().toISOString()},
-    {tool:'get_config',device:'vps',status:'ok',durationMs:14,at:new Date().toISOString()},
-    {tool:'start_process',device:'vps',status:'ok',durationMs:174,at:new Date().toISOString()}
-  ]
+  activity:Array.from({length:activityEntries},(_,i)=>({tool:'history_'+String(i+1),device:i%2?'vps':'kha_pc',status:i%7?'ok':'error',durationMs:20+i,at:new Date().toISOString()}))
 }),{mode:0o600});
 const port=await new Promise((resolve,reject)=>{const s=net.createServer();s.once('error',reject);s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p))})});
 const root='http://127.0.0.1:'+port;
@@ -80,7 +82,7 @@ try {
     scripts:[...document.scripts].map(x=>x.src),forms:[...document.forms].every(x=>!!x.querySelector('[name="_csrf"]'))
   }));
   assert(desktop.width<=desktop.viewport+2,'desktop overflow');
-  assert.equal(desktop.visibleDevices,3);
+  assert.equal(desktop.visibleDevices,4);
   assert.equal(await page.evaluate(() => document.querySelectorAll('[data-live-region="metrics"] .metric').length),3,'overview should show three useful metrics');
   assert((await page.$eval('[data-live-region="mcp-status"]', e=>e.textContent)).includes('2 thiết bị sẵn sàng'),'MCP panel should show actual ready devices');
   assert(desktop.theme.startsWith('rgb(11, 16, 23)'),'not dark mode: '+desktop.theme);
@@ -96,13 +98,48 @@ try {
 
   await page.click('[data-live-region="preview-devices"] [data-open-dialog="devices-dialog"]');
   assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'quick manage must open full device modal');
-  assert.equal((await page.$$('#devices-dialog .device-tile')).length,3);
+  assert.equal((await page['$$']('#devices-dialog .device-tile')).length,3+additionalDevices);
+  assert((await page.$eval('#devices-dialog',e=>e.textContent)).includes('Xem kết nối'),'readonly connection control missing');
+  const modalAlign=await page.$eval('#devices-dialog .dialog-head',e=>{
+    const head=e.getBoundingClientRect(), close=e.querySelector('.icon-button').getBoundingClientRect();
+    return {offset:Math.abs((head.top+head.bottom)/2-(close.top+close.bottom)/2),width:close.width,height:close.height};
+  });
+  assert(modalAlign.offset<=3 && modalAlign.width===40 && modalAlign.height===40,'modal close alignment: '+JSON.stringify(modalAlign));
+  await page.type('#device-filter','Test Desktop 064');
+  assert.equal(await page.evaluate(()=>document.querySelectorAll('#devices-dialog .device-tile:not([hidden])').length),1,'search must filter large device list');
+  assert((await page.$eval('#device-filter-count',e=>e.textContent)).startsWith('1 / '),'search count must update');
+  await page.click('#device-filter');
+  await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');
+  assert.equal(await page.evaluate(()=>document.querySelectorAll('#devices-dialog .device-tile:not([hidden])').length),3+additionalDevices,'clearing search restores devices');
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-device-modal.png')});
+  await page.click('#devices-dialog [data-connect-device]');
+  assert(await page.evaluate(()=>document.querySelector('#device-connection-dialog')?.open),'connection read-only dialog failed');
+  assert((await page.$eval('#connection-mcp-endpoint',e=>e.value)).endsWith('/mcp'),'MCP endpoint missing');
+  assert((await page.$eval('#connection-command',e=>e.value)).includes('<LINK_GHEP_NOI>'),'do not invent lost device secret');
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
   assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'see-all must open devices modal');
   await page.keyboard.press('Escape');
 
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-desktop.png'),fullPage:true});
+  await page.goto(root+'/dashboard?view=activity&page=2',{waitUntil:'domcontentloaded'});
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,20);
+  assert((await page.$eval('[data-live-region="activity-list"]',e=>e.textContent)).includes('history_21'),'second page mismatch');
+  assert((await page.$eval('[data-live-region="activity-pagination"]',e=>e.textContent)).includes('21–40'),'pagination range mismatch');
+  await page.click('a[rel="next"]');
+  assert.equal(new URL(page.url()).searchParams.get('page'),'3');
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,Math.min(20,activityEntries-40));
+  await page.goto(root+'/dashboard?view=activity&page=9999',{waitUntil:'domcontentloaded'});
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,(activityEntries%20)||20,'large activity page should clamp');
+  await page.goto(root+'/dashboard?view=activity&page=-2',{waitUntil:'domcontentloaded'});
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,20,'invalid activity page should reset');
+  const noConfirm=await page.evaluate(async()=> {
+    const token=document.querySelector('[name="_csrf"]')?.value;
+    const response=await fetch('/dashboard/devices/mock-001/rotate',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({_csrf:token})});
+    return response.status;
+  });
+  assert.equal(noConfirm,400,'device key rotation must demand explicit confirmation');
 
   for (const route of ['activity','clients','security','overview']) {
     await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('[data-page-nav="'+route+'"]')]);
@@ -124,7 +161,10 @@ try {
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.querySelector('#live-health')?.textContent.includes('Trực tiếp'),{timeout:10000});
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
   sockets[1].close(1000,'realtime UI verification');
+  await page.waitForFunction(()=>[...document.querySelectorAll('#devices-dialog .device-tile')].some(row=>row.textContent.includes('Windows Workstation') && row.querySelector('.status-badge')?.textContent.includes('Ngoại tuyến')),{timeout:15000});
+  await page.keyboard.press('Escape');
   await page.waitForFunction(()=>document.querySelector('[data-live-region="metrics"] .metric strong')?.textContent==='1',{timeout:15000});
   assert((await page.$eval('[data-live-region="preview-devices"]',el=>el.textContent)).includes('Ngoại tuyến'),'SSE did not refresh device status');
   assert((await page.$eval('[data-live-region="mcp-status"]',el=>el.textContent)).includes('1 thiết bị sẵn sàng'),'MCP side panel did not update with SSE');
@@ -145,13 +185,43 @@ try {
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   await page.click('.add-trigger');
+  const mobileDialog=await page.$eval('#add-device-dialog',el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth}));
+  assert(mobileDialog.left>=0 && mobileDialog.right<=390 && mobileDialog.scrollWidth<=mobileDialog.clientWidth+2,'mobile add-device dialog overflow: '+JSON.stringify(mobileDialog));
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-add-modal.png')});
   await page.type('#device-name','Laptop thử nghiệm');
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('#add-device-dialog .pair-form button[type="submit"]')]);
   assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'new device pairing must auto-open one-time result modal');
   assert((await page.$eval('#pair-result-dialog',e=>e.textContent)).includes('/pair/'),'pairing dialog must contain generated URL');
   assert((await page.$eval('#pair-result-dialog',e=>e.textContent)).includes('desktop-commander remote'),'pairing dialog must contain actual install command');
+  const issuedCommand=await page.$eval('#pair-command',e=>e.value);
+  await page.keyboard.press('Escape');
+  await page.reload({waitUntil:'domcontentloaded'});
+  assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'pair command must be reopenable during authenticated session');
+  assert.equal(await page.$eval('#pair-command',e=>e.value),issuedCommand,'pair token changed during reload');
+  await page.keyboard.press('Escape');
+  await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
+  assert(!(await page.content()).includes(issuedCommand),'device secret should not be in normal dashboard markup');
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  const link=await page.$('#devices-dialog .pair-view');
+  assert(link,'newly issued pairing link should have re-open control');
+  await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),link.click()]);
+  assert.equal(await page.$eval('#pair-command',e=>e.value),issuedCommand,'reopened command must be unchanged');
+  const confirmedRotate=await page.evaluate(async()=>{
+    const csrf=document.querySelector('[name="_csrf"]')?.value;
+    const response=await fetch('/dashboard/devices/mock-001/rotate',{
+      method:'POST',credentials:'same-origin',redirect:'follow',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({_csrf:csrf,confirm:'rotate'})
+    });
+    return {status:response.status,location:response.url};
+  });
+  assert.equal(confirmedRotate.status,200,'confirmed key rotation should reach the updated dashboard');
+  assert(confirmedRotate.location?.includes('&pair='),'rotation should reveal new pairing instructions');
+  await page.goto(new URL(confirmedRotate.location,root).href,{waitUntil:'domcontentloaded'});
+  assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'new key must be displayed after confirmed rotation');
+  assert((await page.$eval('#pair-link',el=>el.value)).includes('/pair/'),'new pairing link must be available');
   assert.equal(errors.length,0,'browser errors: '+errors.join(';'));
-  console.log('PASS: dark UI, login, 4 tabs, modal add + manage + all devices, CSP, CSRF, SSE device state changes, mobile/desktop, no JS errors/overflow');
+  console.log('PASS: '+(3+additionalDevices)+' devices, '+activityEntries+' paged activities, safe pairing and key rotation, readable dialogs, live status, CSP/CSRF, SSE and responsive UI');
   console.log(JSON.stringify({desktop,mobile,screenshots:['karis-dashboard-login.png','karis-dashboard-desktop.png','karis-dashboard-mobile.png']}));
 
 } finally {

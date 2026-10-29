@@ -1641,3 +1641,84 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
 @media(max-width:390px){
   .dashboard-body .nav a{font-size:13px}
 }
+
+/* Dashboard device-flow v2: predictable dialogs, safe pairing, activity pagination. */
+.dashboard-body .control-dialog{scrollbar-gutter:stable;max-height:min(90dvh,850px)}
+.dashboard-body .dialog-head{min-height:80px;align-items:center;padding:20px 24px}
+.dashboard-body .dialog-head h2{flex:1;min-width:0;line-height:1.25;font-size:22px}
+.dashboard-body .icon-button{appearance:none;display:grid;place-items:center;flex:0 0 40px;min-width:40px;min-height:40px;width:40px;height:40px;line-height:1;padding:0;margin:0;border-radius:9px}
+.dashboard-body .icon-button .icon{transform:none;width:20px;height:20px}
+.dashboard-body .icon-button:focus-visible{outline-offset:2px}
+.dashboard-body .dialog-body{padding:22px 24px 26px;min-width:0}
+.dashboard-body .dialog-lead{line-height:1.55;margin-bottom:20px}
+.dashboard-body .pair-form{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.dashboard-body .pair-form label{min-width:0;font-size:15px}
+.dashboard-body .pair-form input{width:100%;min-width:0}
+.dashboard-body .dialog-footer{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:13px}
+.dashboard-body .pair-form .dialog-footer{grid-column:1/-1;margin-top:7px;padding-top:14px;border-top:1px solid #2c3947}
+.dashboard-body .dialog-footer .button{width:auto;min-height:44px;margin-top:0}
+.dashboard-body .dialog-list .device-tile{padding:17px 0;column-gap:12px}
+.dashboard-body .control-dialog .device-tools{grid-column:2/-1;justify-content:flex-end}
+.dashboard-body .control-dialog .device-info strong{overflow-wrap:anywhere}
+.dashboard-body .device-tools .button{min-height:39px}
+.dashboard-body .device-tools .pair-view{border-color:#315b50;background:#183c34;color:#9bffdc}
+.dashboard-body .device-options{width:min(400px,100%);margin-left:auto}
+.dashboard-body .device-options .risk-caption{font-size:14px;color:#e6c1a5;line-height:1.5}
+.dashboard-body .device-options form{display:grid;gap:12px}
+.dashboard-body .device-options .danger-option>summary{cursor:pointer}
+.dashboard-body .connection-target{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-bottom:20px}
+.dashboard-body .connection-target strong{font-size:18px;overflow-wrap:anywhere}
+.dashboard-body .connection-target span{font-size:13px;color:#aebdca}
+.dashboard-body .control-dialog .secret-copy{display:flex;align-items:flex-start;gap:9px;margin:8px 0 19px;min-width:0}
+.dashboard-body .control-dialog .secret-copy .copy-field{flex:1;min-width:0}
+.dashboard-body .control-dialog textarea.copy-field{display:block;resize:vertical;min-height:60px;max-height:200px;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
+.dashboard-body .control-dialog .copy-label{font-size:14px;font-weight:650;margin:0 0 8px}
+.dashboard-body .control-dialog .copy-field{background:#0d151e;border-color:#3b4b5a;color:#dcecf5;margin:0}
+.dashboard-body .control-dialog .pair-warning{color:#bfcbd5;font-size:14px;line-height:1.55;background:#192632;border:1px solid #344452;border-radius:9px;padding:12px 14px;margin:14px 0 0}
+.dashboard-body .control-dialog .pair-warning + .dialog-footer{margin-top:20px}
+.dashboard-body .activity-pagination{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-top:20px;margin-top:12px;border-top:1px solid var(--line)}
+.dashboard-body .pagination-summary{color:var(--soft);font-size:14px}
+.dashboard-body .pagination-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+.dashboard-body .pagination-actions .button{min-height:40px;padding:8px 12px}
+.dashboard-body .pagination-actions .button.disabled{opacity:.4;pointer-events:none}
+.dashboard-body .page-index{display:grid;place-items:center;min-width:38px;height:40px;padding:0 8px;border:1px solid #344350;background:#1d2834;border-radius:8px;font-size:14px;font-weight:620;color:#d8e2ec}
+.dashboard-body .page-index.active{background:#1e493d;border-color:#4ad1b3;color:#c8ffe9}
+.dashboard-body .page-gap{padding:0 3px;color:#90a2ae}
+.dashboard-body .control-dialog .dialog-head h2:focus{outline:none}
+@media(max-width:690px){
+ .dashboard-body .dialog-head{min-height:70px;padding:16px 18px}
+ .dashboard-body .dialog-body{padding:18px}
+ .dashboard-body .control-dialog .device-tools{grid-column:1/-1;justify-content:flex-start}
+ .dashboard-body .control-dialog .secret-copy{flex-direction:column}
+ .dashboard-body .control-dialog .secret-copy .copy-field{width:100%;flex:auto}
+ .dashboard-body .control-dialog .secret-copy .button{width:100%}
+ .dashboard-body .dialog-footer{justify-content:stretch}
+ .dashboard-body .dialog-footer .button{flex:1 1 auto}
+ .dashboard-body .activity-pagination{align-items:flex-start;flex-direction:column}
+}
+
+/* High-density device list and search, without expanding every device's actions. */
+.dashboard-body .device-filter-bar{display:flex;align-items:end;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:0 0 15px;border-bottom:1px solid #2a3744}
+.dashboard-body .device-filter-bar label{display:grid;gap:7px;min-width:min(100%,310px);flex:1 1 260px;font-size:14px;font-weight:650;color:#d4e1ea}
+.dashboard-body .device-filter-bar input{height:43px;width:100%;padding:9px 12px;color:#eaf2f8;background:#0e161f;border:1px solid #435462;border-radius:9px;font-size:15px}
+.dashboard-body .device-filter-bar span{font-size:13px;color:#a6b8c7;padding:0 0 11px}
+.dashboard-body .dialog-list .device-tile{min-height:79px;padding:11px 0}
+.dashboard-body .dialog-list .device-tile[hidden],.dashboard-body #device-filter-empty[hidden]{display:none!important}
+.dashboard-body .control-dialog .device-tile{grid-template-columns:44px minmax(0,1fr) auto auto;column-gap:12px;row-gap:8px}
+.dashboard-body .control-dialog .device-connect{grid-column:3;grid-row:1}
+.dashboard-body .control-dialog .device-tools{grid-column:4;grid-row:1;justify-content:flex-end;max-width:320px}
+.dashboard-body .control-dialog .device-tools .button{min-height:39px;padding:8px 11px;font-size:13px}
+.dashboard-body .control-dialog .device-options{position:static;margin-top:8px;max-width:min(350px,80vw);min-width:min(290px,70vw);max-height:none;overflow:visible;box-shadow:none}
+.dashboard-body .control-dialog .device-more[open]{z-index:4}
+.dashboard-body .control-dialog .device-more .device-options .button{white-space:normal}
+@media(max-width:800px){
+ .dashboard-body .control-dialog .device-tile{grid-template-columns:44px minmax(0,1fr) auto;row-gap:10px}
+ .dashboard-body .control-dialog .device-connect{grid-column:3;grid-row:1}
+ .dashboard-body .control-dialog .device-tools{grid-column:2/-1;grid-row:2;justify-content:flex-end;max-width:none}
+}
+@media(max-width:500px){
+ .dashboard-body .control-dialog .device-tile{grid-template-columns:41px minmax(0,1fr);row-gap:5px}
+ .dashboard-body .control-dialog .device-connect{grid-column:2;grid-row:2}
+ .dashboard-body .control-dialog .device-tools{grid-column:1/-1;grid-row:3;justify-content:flex-start;max-width:100%}
+ .dashboard-body .control-dialog .device-options{right:auto;left:0;max-width:calc(95vw - 48px);min-width:min(320px,78vw)}
+}
