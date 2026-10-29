@@ -71,7 +71,8 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     const html = renderConsoleView({
       list, clients: Object.values(db.clients || {}), activities: db.activity || [],
       usageTotal: Number(db.usage?.totalCalls) || 0, maxDevices,
-      endpoint: issuer.origin + '/mcp', pendingLink, message, csrfToken: session.csrfToken
+      endpoint: issuer.origin + '/mcp', pendingLink, message, csrfToken: session.csrfToken,
+      view: req.query?.view || (req.path.includes('revoke-all') ? 'security' : req.path.includes('/devices') ? 'devices' : req.path.includes('/clients') ? 'clients' : 'overview')
     });
     res.status(200).type('html').send(html);
   }
@@ -139,7 +140,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     const record = { id, alias, displayName, tokenHash: '', createdAt: now(), lastSeen: null, revokedAt: null, tools: [], platform: 'unknown', agentVersion: null, protected: false, source: 'dashboard' };
     db.devices[id] = record;
     createPair(record, found);
-    res.redirect(303, '/dashboard');
+    res.redirect(303, '/dashboard?view=devices');
   });
   app.post('/dashboard/devices/:id/rotate', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
@@ -147,7 +148,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     if (!record || record.revokedAt) { render(req, res, 'Unknown or revoked device.'); return; }
     const live = devices.get(record.id); if (live) live.ws.close(4001, 'Pairing key rotated');
     const token = random(); record.tokenHash = digest(token); record.revokedAt = null; record.updatedAt = now();
-    issuePair(found, record, token); save(); onChange(); res.redirect(303, '/dashboard');
+    issuePair(found, record, token); save(); onChange(); res.redirect(303, '/dashboard?view=devices');
   });
   app.post('/dashboard/devices/:id/revoke', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
@@ -156,7 +157,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     record.revokedAt = now();
     if (db.defaultDeviceId === record.id) db.defaultDeviceId = deviceList().find(d => d.id !== record.id)?.id || '';
     const live = devices.get(record.id); if (live) live.ws.close(4003, 'Device revoked');
-    save(); onChange(); res.redirect(303, '/dashboard');
+    save(); onChange(); res.redirect(303, '/dashboard?view=devices');
   });
   app.post('/dashboard/devices/revoke-all', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
@@ -166,13 +167,13 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
       const live = devices.get(record.id); if (live) live.ws.close(4003, 'Device revoked');
     }
     db.defaultDeviceId = deviceList()[0]?.id || '';
-    save(); onChange(); res.redirect(303, '/dashboard');
+    save(); onChange(); res.redirect(303, '/dashboard?view=security');
   });
   app.post('/dashboard/devices/:id/default', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
     const record = db.devices[req.params.id];
     if (!record || record.revokedAt) { render(req, res, 'Unknown or revoked device.'); return; }
-    db.defaultDeviceId = record.id; save(); onChange(); res.redirect(303, '/dashboard');
+    db.defaultDeviceId = record.id; save(); onChange(); res.redirect(303, '/dashboard?view=devices');
   });
   app.post('/dashboard/clients/:id/revoke', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
@@ -181,7 +182,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     for (const collection of ['access', 'refresh', 'codes']) {
       for (const [key, value] of Object.entries(db[collection] || {})) if (value.clientId === id) delete db[collection][key];
     }
-    save(); res.redirect(303, '/dashboard');
+    save(); res.redirect(303, '/dashboard?view=clients');
   });
   app.get('/pair/:token', (req, res) => {
     const token = String(req.params.token || '');

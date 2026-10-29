@@ -344,9 +344,11 @@ try {
   const stats = JSON.parse(usage.content[0].text);
   assert.equal(stats.quota, 'none');
   assert(stats.totalToolCalls >= 4);
-  const dashboardAfterCalls = await (await fetch(root + '/dashboard', { headers: { Cookie: cookie } })).text();
-  assert(dashboardAfterCalls.includes('Usage and recent activity'));
+  const dashboardAfterCalls = await (await fetch(root + '/dashboard?view=activity', { headers: { Cookie: cookie } })).text();
+  assert(dashboardAfterCalls.includes('Nhật ký gần đây'));
   assert(dashboardAfterCalls.includes('probe'));
+  const overviewAfterCalls = await (await fetch(root + '/dashboard?view=overview', { headers: { Cookie: cookie } })).text();
+  assert(overviewAfterCalls.includes('Hoạt động gần đây'));
 
   const revoke = await fetch(root + '/dashboard/devices/' + encodeURIComponent(deviceList.find(d => d.alias === 'pc_two').id) + '/revoke', {
     method: 'POST', headers: { Cookie: cookie, Origin: root }, redirect: 'manual'

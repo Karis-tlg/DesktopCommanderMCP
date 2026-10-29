@@ -71,19 +71,47 @@ try {
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-login.png'),fullPage:true});
   await page.type('#admin-password',admin);
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('.login-form button')]);
-  assert((await page.content()).includes('Tổng quan hệ thống'),'dashboard did not render');
+  assert((await page.content()).includes('data-view="overview"'),'dashboard did not render');
   const desktop=await page.evaluate(()=>({title:document.title,bodyWidth:document.body.scrollWidth,viewport:window.innerWidth,devices:document.querySelectorAll('.device-row').length,forms:document.querySelectorAll('form').length,mainText:document.querySelector('h1')?.innerText}));
   assert(desktop.bodyWidth<=desktop.viewport+2,'desktop horizontal overflow: '+JSON.stringify(desktop));
-  assert.equal(desktop.devices,3);
-  assert((await page.$$('input[name="_csrf"]')).length>=6,'forms must have CSRF');
+  assert.equal(desktop.devices,0,'overview must not render the full device management list');
+  const csrfState=await page.evaluate(()=>({forms:document.querySelectorAll('form').length,all:[...document.querySelectorAll('form')].every(form=>!!form.querySelector('input[name="_csrf"]'))}));
+  assert(csrfState.forms>=1 && csrfState.all,'all forms must include CSRF: '+JSON.stringify(csrfState));
+  const routes=['devices','connection','activity','clients','security','overview'];
+  for (const route of routes) {
+    await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('[data-page-nav="'+route+'"]')]);
+    const state=await page.evaluate(()=>({
+      views:[...document.querySelectorAll('[data-view]')].map(x=>x.dataset.view),
+      active:document.querySelector('[aria-current="page"]')?.dataset.pageNav,
+      urlView:new URL(location.href).searchParams.get('view'),
+      deviceRows:document.querySelectorAll('.device-row').length,
+      forms:[...document.querySelectorAll('form')].every(form=>!!form.querySelector('input[name="_csrf"]')),
+      scripts:document.scripts.length,
+      width:document.body.scrollWidth,viewport:innerWidth
+    }));
+    assert.deepEqual(state.views,[route],'only one server-rendered view at a time: '+route);
+    assert.equal(state.active,route,'sidebar aria-current: '+route);
+    assert.equal(state.urlView,route,'shareable page URL: '+route);
+    assert(state.forms,'CSRF in every form on '+route);
+    assert.equal(state.scripts,0,'CSP-safe dashboard should not need inline scripts');
+    assert(state.width<=state.viewport+2,'horizontal overflow on '+route);
+    if(route==='devices')assert.equal(state.deviceRows,3,'all paired devices visible in Devices');
+  }
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-desktop.png'),fullPage:true});
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
   await page.reload({waitUntil:'domcontentloaded'});
   const mobile=await page.evaluate(()=>({bodyWidth:document.body.scrollWidth,viewport:window.innerWidth,nav:document.querySelector('.nav').scrollWidth}));
   assert(mobile.bodyWidth<=mobile.viewport+2,'mobile horizontal overflow: '+JSON.stringify(mobile));
+  for (const route of ['devices','connection','activity','clients','security']) {
+    await page.goto(root+'/dashboard?view='+route,{waitUntil:'domcontentloaded'});
+    const state=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:window.innerWidth,views:[...document.querySelectorAll('[data-view]')].map(x=>x.dataset.view)}));
+    assert(state.width<=state.viewport+2,'mobile overflow in '+route+': '+JSON.stringify(state));
+    assert.deepEqual(state.views,[route],'mobile route mismatch: '+route);
+  }
+  await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-mobile.png'),fullPage:true});
   assert.equal(errors.length,0,'browser errors: '+errors.join(';'));
-  console.log('PASS: visual browser test, login, desktop, 390px mobile, CSRF, 3 devices, no page errors or horizontal overflow.');
+  console.log('PASS: dashboard login, 6 isolated management pages, 3 demo devices, CSRF, CSP-safe navigation, 1440px desktop and 390px mobile with no page errors/overflow.');
   console.log(JSON.stringify({desktop,mobile,screenshots:['karis-dashboard-login.png','karis-dashboard-desktop.png','karis-dashboard-mobile.png']}));
 } finally {
   if(browser) await browser.close().catch(()=>{});
