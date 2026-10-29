@@ -8,11 +8,11 @@
   };
   const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const filterDevices = () => {
+    const dialog = $('#devices-dialog');
     const search = $('#device-filter');
-    const root = $('#inline-device-manager');
-    if (!search || !root) return;
+    if (!dialog || !search) return;
     const query = normalize(search.value.trim());
-    const items = [...root.querySelectorAll('[data-live-region="managed-devices"] .device-tile')];
+    const items = [...dialog.querySelectorAll('[data-live-region="modal-device-list"] .device-tile')];
     let count = 0;
     for (const item of items) {
       const name = item.querySelector('.device-info')?.textContent || '';
@@ -24,30 +24,24 @@
     $('#device-filter-count').textContent = count + ' / ' + items.length + ' thiết bị';
     $('#device-filter-empty').hidden = count !== 0;
   };
-  const openModal = name => {
+  const openModal = (name, focusId) => {
     const dialog = document.getElementById(name);
     if (!(dialog instanceof HTMLDialogElement)) return;
     if (!dialog.open) dialog.showModal();
-    if (name === 'add-device-dialog') dialog.querySelector('#device-name')?.focus();
-    else dialog.querySelector('.dialog-head h2')?.focus({preventScroll:true});
-  };
-  const showDevices = (focusId, collapse = false) => {
-    const section = $('#inline-device-manager');
-    if (!section) return;
-    const shouldShow = !collapse && (section.hidden || !!focusId);
-    section.hidden = !shouldShow;
-    $('#show-all-devices')?.setAttribute('aria-expanded', String(shouldShow));
-    if (!shouldShow) { $('#show-all-devices')?.focus(); return; }
-    const row = focusId ? [...section.querySelectorAll('.device-tile')].find(x => x.dataset.deviceId === focusId) : null;
-    const search = $('#device-filter');
-    if (row) {
-      search.value = '';
+    if (name === 'devices-dialog') {
+      $('#device-filter').value = '';
       filterDevices();
-      row.scrollIntoView({block:'nearest'});
-      row.querySelector('.device-options-trigger')?.focus({preventScroll:true});
+      const row = focusId ? [...dialog.querySelectorAll('.device-tile')].find(x => x.dataset.deviceId === focusId) : null;
+      if (row) {
+        row.scrollIntoView({block:'nearest'});
+        row.querySelector('.device-options-trigger')?.focus({preventScroll:true});
+      } else {
+        $('#device-filter')?.focus({preventScroll:true});
+      }
+    } else if (name === 'add-device-dialog') {
+      dialog.querySelector('#device-name')?.focus();
     } else {
-      section.scrollIntoView({block:'start'});
-      search.focus({preventScroll:true});
+      dialog.querySelector('.dialog-head h2')?.focus({preventScroll:true});
     }
   };
   document.addEventListener('input', event => { if (event.target?.id === 'device-filter') filterDevices(); });
@@ -87,11 +81,8 @@
   window.addEventListener('resize', closeDropdowns);
 
   document.addEventListener('click', async event => {
-    const show = event.target.closest('[data-show-devices]');
-    if (show) { showDevices(show.dataset.deviceFocus || ''); return; }
-    if (event.target.closest('[data-hide-devices]')) { closeDropdowns(); showDevices('', true); return; }
     const start = event.target.closest('[data-open-dialog]');
-    if (start) { openModal(start.dataset.openDialog); return; }
+    if (start) { openModal(start.dataset.openDialog, start.dataset.deviceFocus); return; }
     if (event.target.closest('[data-close-dialog]')) {
       event.target.closest('dialog')?.close();
       return;
@@ -150,13 +141,12 @@
         return;
       }
       const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
-      for (const name of ['metrics','preview-devices','recent-activities','activity-list','activity-pagination','client-list','device-full-list','managed-devices','mcp-status']) {
+      for (const name of ['metrics','preview-devices','recent-activities','activity-list','activity-pagination','client-list','device-full-list','modal-device-list','mcp-status']) {
         const selector = '[data-live-region="' + name + '"]';
         const oldNode = $(selector), newNode = parsed.querySelector(selector);
         if (!oldNode || !newNode) continue;
-        const openDevicePopover = !!document.querySelector('[data-device-popover]:popover-open');
-        if ((name === 'managed-devices' && !$('#inline-device-manager')?.hidden) ||
-            (name === 'device-full-list' && openDevicePopover)) {
+        if (name === 'modal-device-list' && $('#devices-dialog')?.open) {
+          const openDevicePopover = !!oldNode.querySelector('[data-device-popover]:popover-open');
           if (openDevicePopover) {
             const incoming = new Map([...newNode.querySelectorAll('[data-device-id]')].map(row => [row.dataset.deviceId,row]));
             for (const row of oldNode.querySelectorAll('[data-device-id]')) {
@@ -168,7 +158,7 @@
             continue;
           }
           oldNode.replaceWith(newNode);
-          if (name === 'managed-devices') filterDevices();
+          filterDevices();
           continue;
         }
         oldNode.replaceWith(newNode);
@@ -185,6 +175,10 @@
     }
   };
 
+  $('#devices-dialog')?.addEventListener('close', () => {
+    closeDropdowns();
+    if (managerNeedsSync) { managerNeedsSync = false; void refreshVisible(); }
+  });
   // Native SSE reconnects automatically. No polling loops or public status endpoints.
   if ('EventSource' in window) {
     const events = new EventSource('/dashboard/events', {withCredentials:true});

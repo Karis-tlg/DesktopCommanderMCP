@@ -1723,16 +1723,8 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
  .dashboard-body .control-dialog .device-options{right:auto;left:0;max-width:calc(95vw - 48px);min-width:min(320px,78vw)}
 }
 
-/* Compact non-modal device management: inline list + anchored native dropdown. */
-.dashboard-body .inline-device-manager{margin-top:17px;padding:22px;scroll-margin-top:20px}
-.dashboard-body .inline-device-manager[hidden]{display:none!important}
-.dashboard-body .inline-device-manager>.panel-head{margin-bottom:16px}
+/* Anchored dropdowns inside the device management dialog. */
 .dashboard-body .inline-manager-scroll{max-height:min(64vh,630px);overflow-y:auto;overscroll-behavior:contain;padding-right:7px;scrollbar-width:thin;scrollbar-color:#526373 #15202b}
-.dashboard-body .inline-device-manager .device-tile{display:grid;grid-template-columns:44px minmax(0,1fr) auto auto;gap:13px;min-height:76px;align-items:center;padding:12px 0;border-top:1px solid #2a3946}
-.dashboard-body .inline-device-manager .device-tile:first-child{border-top:0}
-.dashboard-body .inline-device-manager .device-tile[hidden]{display:none!important}
-.dashboard-body .inline-device-manager .device-tools{grid-column:4;grid-row:1;justify-content:flex-end}
-.dashboard-body .inline-device-manager .device-connect{grid-column:3;grid-row:1}
 .dashboard-body .device-dropdown-panel{position:fixed;inset:auto;margin:0;box-sizing:border-box;z-index:100;width:344px;max-height:calc(100dvh - 20px);overflow-y:auto;overscroll-behavior:contain;padding:9px;background:#1b2631;border:1px solid #435666;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.6);color:#edf5fa;font-size:14px;scrollbar-width:thin;scrollbar-color:#526373 #1b2631}
 .dashboard-body .device-dropdown-panel:not(:popover-open){display:none}
 .dashboard-body .device-dropdown-title{display:block;font-size:15px;line-height:1.4;font-weight:720;padding:10px 11px 12px;border-bottom:1px solid #344553;overflow-wrap:anywhere}
@@ -1757,16 +1749,5 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
 .dashboard-body .device-dropdown-panel .dropdown-danger{width:100%;min-height:39px;padding:8px 12px;background:#542c29;border:1px solid #7d504a;color:#f9dfdb;border-radius:7px;font-size:13px;font-weight:650;cursor:pointer}
 .dashboard-body .device-dropdown-panel .dropdown-danger:hover{background:#713531}
 .dashboard-body .device-dropdown-panel .danger-disclosure>summary{color:#e7aca7}
-.dashboard-body .inline-device-manager .device-filter-bar{margin-bottom:6px}
-@media(max-width:800px){
- .dashboard-body .inline-device-manager .device-tile{grid-template-columns:44px minmax(0,1fr) auto;gap:9px}
- .dashboard-body .inline-device-manager .device-connect{grid-column:3;grid-row:1}
- .dashboard-body .inline-device-manager .device-tools{grid-column:2/-1;grid-row:2;justify-content:flex-end}
-}
-@media(max-width:500px){
- .dashboard-body .inline-device-manager{padding:16px}
- .dashboard-body .inline-device-manager .device-tile{grid-template-columns:41px minmax(0,1fr);gap:8px}
- .dashboard-body .inline-device-manager .device-connect{grid-column:2;grid-row:2}
- .dashboard-body .inline-device-manager .device-tools{grid-column:2;grid-row:3;justify-content:flex-start}
- .dashboard-body .device-dropdown-panel{font-size:14px}
-}
+
+@media(max-width:500px){.dashboard-body .device-dropdown-panel{font-size:14px}}

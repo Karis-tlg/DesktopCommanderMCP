@@ -96,23 +96,23 @@ try {
   await page.keyboard.press('Escape');
   assert(!(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open)),'escape must close modal');
 
-  await page.click('[data-live-region="preview-devices"] [data-show-devices]');
-  assert(await page.evaluate(()=>!document.querySelector('#inline-device-manager').hidden),'device manager must expand on the page');
-  assert.equal(await page.$('#devices-dialog'),null,'device manager must not use a modal window');
-  assert.equal((await page['$$']('#inline-device-manager .device-tile')).length,3+additionalDevices);
-  assert.equal(await page.$eval('#show-all-devices',b=>b.getAttribute('aria-expanded')),'true');
+  await page.click('[data-live-region="preview-devices"] [data-open-dialog="devices-dialog"]');
+  assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'manage must open the device modal');
+  assert.equal(await page.$('#inline-device-manager'),null,'no inline manager may be rendered');
+  assert.equal((await page['$$']('#devices-dialog .device-tile')).length,3+additionalDevices);
   await page.type('#device-filter','Test Desktop 064');
-  assert.equal(await page.evaluate(()=>document.querySelectorAll('#inline-device-manager .device-tile:not([hidden])').length),1,'search must filter devices');
+  assert.equal(await page.evaluate(()=>document.querySelectorAll('#devices-dialog .device-tile:not([hidden])').length),1,'search must filter devices');
   assert((await page.$eval('#device-filter-count',e=>e.textContent)).startsWith('1 / '),'search count must update');
   await page.click('#device-filter');
   await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');
-  assert.equal(await page.evaluate(()=>document.querySelectorAll('#inline-device-manager .device-tile:not([hidden])').length),3+additionalDevices,'clearing search restores all devices');
-  const getHeights=()=>page.evaluate(()=>[...document.querySelectorAll('#inline-device-manager .device-tile')].slice(0,3).map(row=>row.getBoundingClientRect().height));
+  assert.equal(await page.evaluate(()=>document.querySelectorAll('#devices-dialog .device-tile:not([hidden])').length),3+additionalDevices,'clearing search restores all devices');
+  const getHeights=()=>page.evaluate(()=>[...document.querySelectorAll('#devices-dialog .device-tile')].slice(0,3).map(row=>row.getBoundingClientRect().height));
   const heightsBefore=await getHeights();
-  await page.click('#inline-device-manager [data-device-id="mac-one"] .device-options-trigger');
-  assert(await page.evaluate(()=>document.querySelector('#device-menu-mac-one')?.matches(':popover-open')),'options should be a dropdown, not dialog');
+  await page.click('#devices-dialog [data-device-id="mac-one"] .device-options-trigger');
+  assert(await page.evaluate(()=>document.querySelector('#device-menu-mac-one')?.matches(':popover-open')),'options should be a dropdown inside the modal');
+  assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'opening options must not dismiss manager modal');
   assert.deepEqual(await getHeights(),heightsBefore,'dropdown must not stretch device rows');
-  assert.equal(await page.$('#device-actions-dialog'),null,'no options modal should exist');
+  assert.equal(await page.$('#device-actions-dialog'),null,'no separate options modal should exist');
   const dropdownBounds=await page.$eval('#device-menu-mac-one',el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}});
   assert(dropdownBounds.left>=0&&dropdownBounds.right<=1440,'dropdown must stay in viewport');
   await page.click('#device-menu-mac-one .dropdown-disclosure summary');
@@ -121,10 +121,12 @@ try {
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-device-dropdown.png')});
   await page.keyboard.press('Escape');
   assert(!await page.evaluate(()=>document.querySelector('#device-menu-mac-one').matches(':popover-open')),'Escape must close dropdown');
-  await page.click('[data-hide-devices]');
-  assert(await page.evaluate(()=>document.querySelector('#inline-device-manager').hidden),'collapse control must hide manager');
-  await page.click('#show-all-devices');
-  assert(await page.evaluate(()=>!document.querySelector('#inline-device-manager').hidden),'show all should expand inline');
+  assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'Escape on dropdown must not dismiss parent modal');
+  await page.keyboard.press('Escape');
+  assert(!await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'second Escape must close manager modal');
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'see-all must reopen device modal');
+  await page.keyboard.press('Escape');
 
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-desktop.png'),fullPage:true});
   await page.goto(root+'/dashboard?view=activity&page=2',{waitUntil:'domcontentloaded'});
@@ -165,12 +167,13 @@ try {
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.querySelector('#live-health')?.textContent.includes('Trực tiếp'),{timeout:10000});
-  await page.click('#show-all-devices');
-  await page.click('#inline-device-manager [data-device-id="pc-one"] .device-options-trigger');
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  await page.click('#devices-dialog [data-device-id="pc-one"] .device-options-trigger');
   assert(await page.evaluate(()=>document.querySelector('#device-menu-pc-one')?.matches(':popover-open')),'dropdown should be open before SSE disconnect');
   sockets[1].close(1000,'realtime UI verification');
-  await page.waitForFunction(()=>[...document.querySelectorAll('#inline-device-manager .device-tile')].some(row=>row.textContent.includes('Windows Workstation') && row.querySelector('.status-badge')?.textContent.includes('Ngoại tuyến')),{timeout:15000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#devices-dialog .device-tile')].some(row=>row.textContent.includes('Windows Workstation') && row.querySelector('.status-badge')?.textContent.includes('Ngoại tuyến')),{timeout:15000});
   assert(await page.evaluate(()=>document.querySelector('#device-menu-pc-one')?.matches(':popover-open')),'SSE must preserve open dropdown');
+  await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.waitForFunction(()=>document.querySelector('[data-live-region="metrics"] .metric strong')?.textContent==='1',{timeout:15000});
   assert((await page.$eval('[data-live-region="preview-devices"]',el=>el.textContent)).includes('Ngoại tuyến'),'SSE did not refresh device status');
@@ -191,13 +194,14 @@ try {
     assert(state.width<=state.viewport+2,'mobile overflow '+route);
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
-  await page.click('#show-all-devices');
-  await page.click('#inline-device-manager [data-device-id="mac-one"] .device-options-trigger');
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  await page.click('#devices-dialog [data-device-id="mac-one"] .device-options-trigger');
   const mobileDropdown=await page.$eval('#device-menu-mac-one',el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,width:el.scrollWidth,client:el.clientWidth}});
   assert(mobileDropdown.left>=0 && mobileDropdown.right<=390 && mobileDropdown.width<=mobileDropdown.client+2,'mobile dropdown overflow: '+JSON.stringify(mobileDropdown));
+  assert(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open),'mobile manager modal still open');
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-dropdown-mobile.png')});
   await page.keyboard.press('Escape');
-  await page.click('[data-hide-devices]');
+  await page.keyboard.press('Escape');
   await page.click('.add-trigger');
   const mobileDialog=await page.$eval('#add-device-dialog',el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth}));
   assert(mobileDialog.left>=0 && mobileDialog.right<=390 && mobileDialog.scrollWidth<=mobileDialog.clientWidth+2,'mobile add-device dialog overflow: '+JSON.stringify(mobileDialog));
@@ -215,8 +219,8 @@ try {
   await page.keyboard.press('Escape');
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   assert(!(await page.content()).includes(issuedCommand),'device secret should not be in normal dashboard markup');
-  await page.click('#show-all-devices');
-  const link=await page.$('#inline-device-manager .pair-view');
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  const link=await page.$('#devices-dialog .pair-view');
   assert(link,'newly issued pairing link should have re-open control');
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),link.click()]);
   assert.equal(await page.$eval('#pair-command',e=>e.value),issuedCommand,'reopened command must be unchanged');
