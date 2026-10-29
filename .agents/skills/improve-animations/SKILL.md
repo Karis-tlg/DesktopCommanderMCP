@@ -7,7 +7,7 @@ description: Reviewing an existing motion or transition problem
 
 When to use: Reviewing an existing motion or transition problem.
 
-Agent workflow: First determine whether animation is needed. Remove unnecessary motion; retain only functional state transitions, honor prefers-reduced-motion.
+Agent workflow: Run a read-only motion audit. Identify unnecessary animations and propose ranked fixes; this upstream advisor skill does not implement changes. Respect prefers-reduced-motion and keep this operations console quiet.
 
 Original upstream skill/source: https://github.com/emilkowalski/skills
 
