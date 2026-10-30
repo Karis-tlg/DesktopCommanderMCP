@@ -37,15 +37,13 @@ export function renderLoginView(errorMessage = '') {
   return page('Đăng nhập · Karis Control', 'login-body',
     '<div class="login-layout"><div class="login-aside">' + brand() +
     '<h1>Kiểm soát mọi thiết bị.<br>Trong một không gian.</h1>' +
-    '<p>Kết nối an toàn tới máy tính và VPS của bạn. Một trung tâm, không giới hạn công cụ theo tháng.</p>' +
-    '<div class="login-feature">' + ico('shield') + ' Truy cập riêng tư · OAuth &amp; ghép nối bảo mật</div></div>' +
-    '<main class="login-form-wrap"><span class="eyebrow">TRUY CẬP QUẢN TRỊ</span><h2>Chào mừng trở lại</h2>' +
-    '<p class="muted">Nhập mật khẩu quản trị để mở trung tâm điều khiển.</p>' +
+    '</div>' +
+    '<main class="login-form-wrap"><h2>Đăng nhập</h2>' +
     (errorMessage ? '<div class="login-error" role="alert">' + esc(errorMessage) + '</div>' : '') +
     '<form method="post" action="/dashboard/login" class="login-form">' +
     '<label for="admin-password">Mật khẩu quản trị<input id="admin-password" name="password" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu của bạn" required></label>' +
     '<button type="submit">Vào dashboard ' + ico('arrow') + '</button></form>' +
-    '<div class="login-help">' + ico('lock') + '<span>Mật khẩu không được hiển thị trong trang hay lưu vào trình duyệt.</span></div></main></div>');
+    '</main></div>');
 }
 
 function deviceRow(d) {
@@ -159,17 +157,16 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
   }).join('') : '<li class="empty">Chưa có hoạt động gần đây.</li>');
   const clientsRows = clients.length ? clients.map(c => {
     const id=String(c.client_id || '');
-    return '<li class="client-row"><span class="client-icon">' + ico('link') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong><small>ID ' + esc(id.slice(0, 12)) + '… · Đã xác minh kết nối MCP' + (c.lastMcpAt ? ' · Lần cuối ' + esc(new Date(c.lastMcpAt*1000).toLocaleString('vi-VN')) : '') + '</small></div><details><summary class="button subtle">Thu hồi</summary>' +
+    return '<li class="client-row"><span class="client-icon">' + ico('link') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong>' + (c.lastMcpAt ? '<small>Kết nối lần cuối ' + esc(new Date(c.lastMcpAt*1000).toLocaleString('vi-VN')) + '</small>' : '') + '</div><details><summary class="button subtle">Thu hồi</summary>' + '<code class="client-technical-id">ID ' + esc(id) + '</code>' +
     postForm('/dashboard/clients/'+encodeURIComponent(id)+'/revoke','<label class="confirm-label"><input type="checkbox" required> Xác nhận thu hồi OAuth</label><button type="submit" class="button danger">Thu hồi quyền</button>') + '</details></li>';
   }).join('') : '<li class="empty">Chưa cấp quyền cho ứng dụng nào.</li>';
   const awaitingRows = awaitingClients.slice(0,10).map(c => {
     const id=String(c.client_id || '');
-    return '<li class="client-row"><span class="client-icon">' + ico('clock') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong><small>Đã đổi token, chưa kết nối MCP thành công · ID ' + esc(id.slice(0,12)) + '…</small></div><details><summary class="button subtle">Thu hồi</summary>' +
+    return '<li class="client-row"><span class="client-icon">' + ico('clock') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong></div><details><summary class="button subtle">Thu hồi</summary>' + '<code class="client-technical-id">ID ' + esc(id) + '</code>' +
       postForm('/dashboard/clients/'+encodeURIComponent(id)+'/revoke','<label class="confirm-label"><input type="checkbox" required> Xác nhận thu hồi</label><button type="submit" class="button danger">Thu hồi</button>') + '</details></li>';
   }).join('');
   const modal = (id,title,body,wide=false,extra='') => '<dialog id="' + id + '" class="control-dialog' + (wide ? ' wide' : '') + '"' + extra + ' aria-labelledby="' + id + '-title"><div class="dialog-head"><h2 id="' + id + '-title" tabindex="-1">' + title + '</h2><button type="button" class="icon-button" data-close-dialog aria-label="Đóng cửa sổ">' + ico('x') + '</button></div><div class="dialog-body">' + body + '</div></dialog>';
-  const addForm = '<p class="dialog-lead">Thêm tên để phân biệt máy. Liên kết kết nối sẽ xuất hiện sau khi tạo.</p>' +
-    postForm('/dashboard/devices/new',
+  const addForm = postForm('/dashboard/devices/new',
       '<label for="device-name">Tên thiết bị<input id="device-name" name="displayName" maxlength="40" placeholder="PC làm việc" required></label>' +
       '<label for="device-alias">Tên ngắn (không bắt buộc)<input id="device-alias" name="alias" maxlength="24" placeholder="pc_lam_viec" pattern="[A-Za-z0-9_-]*"></label>' +
       '<div class="dialog-footer"><button type="button" class="button subtle" data-close-dialog>Hủy</button><button type="submit" class="button primary">' + ico('plus') + ' Thêm thiết bị</button></div>', 'pair-form');
@@ -191,7 +188,7 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
     metrics + '<div class="overview-grid"><section class="panel devices-panel"><div class="panel-head"><h2>Thiết bị <span class="section-count" data-device-total>' + fmt(list.length) + '</span></h2><div class="panel-actions">' +
     button('Xem tất cả', 'arrow', 'devices-dialog', 'button text-action') + '</div></div><div class="device-list" data-live-region="preview-devices">' + devicePreview + '</div></section>' +
     '<section class="panel mcp-panel"><div class="panel-head"><h2>' + ico('link') + ' Kết nối MCP</h2></div>' +
-    '<label for="mcp-endpoint">Địa chỉ MCP</label><div class="endpoint-control"><input id="mcp-endpoint" class="copy-field" value="' + esc(endpoint) + '" readonly aria-label="Địa chỉ máy chủ MCP"><button type="button" class="button subtle" data-copy-target="mcp-endpoint">' + ico('link') + ' Sao chép</button></div>' +
+    '<div class="endpoint-control"><input id="mcp-endpoint" class="copy-field" value="' + esc(endpoint) + '" readonly aria-label="Địa chỉ máy chủ MCP"><button type="button" class="button subtle" data-copy-target="mcp-endpoint">' + ico('link') + ' Sao chép</button></div>' +
     '<div class="mcp-live" data-live-region="mcp-status"><span class="status-dot' + (online ? ' is-online' : '') + '"></span><strong>' + (online ? fmt(online) + ' thiết bị sẵn sàng' : 'Chưa có thiết bị trực tuyến') + '</strong><a href="/dashboard?view=clients">' + fmt(clients.length) + ' ứng dụng đã kết nối</a></div></section></div>' +
     '<section class="panel recent-panel"><div class="panel-head"><h2>Hoạt động gần đây</h2><a class="button text-action" href="/dashboard?view=activity">Xem chi tiết ' + ico('arrow') + '</a></div>' +
     '<ul class="activity-list" data-live-region="recent-activities">' + activitiesRows(activities.slice(0,4)) + '</ul></section></section>';
@@ -210,12 +207,12 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
       '<a class="page-index' + (p===currentPage ? ' active' : '') + '" href="' + pageUrl(p) + '"' + (p===currentPage ? ' aria-current="page"' : '') + ' aria-label="Trang ' + p + '">' + p + '</a>').join('') +
     (currentPage < totalPages ? '<a class="button subtle" href="' + pageUrl(currentPage+1) + '" rel="next">Sau</a>' : '<span class="button subtle disabled" aria-disabled="true">Sau</span>') +
     '</div></nav>';
-  const activityPageView = viewPage('activity','Hoạt động','<div class="panel"><div class="panel-head"><h2>Lịch sử hoạt động</h2></div><ul class="activity-list" data-live-region="activity-list">' + activitiesRows(activities.slice(start,start+pageSize)) + '</ul>' + pagination + '</div>');
+  const activityPageView = viewPage('activity','Hoạt động','<div class="panel"><div class="panel-head"><h2>Lịch sử</h2></div><ul class="activity-list" data-live-region="activity-list">' + activitiesRows(activities.slice(start,start+pageSize)) + '</ul>' + pagination + '</div>');
   const clientsPage = viewPage('clients','Quyền truy cập',
-    '<div class="panel"><div class="panel-head"><h2>Ứng dụng đã xác minh kết nối</h2></div><p class="muted">Chỉ hiển thị ứng dụng đã dùng token hợp lệ và kết nối MCP thành công. Đăng ký OAuth hoặc mở trang xác nhận chưa phải là cấp quyền.</p><ul class="client-list" data-live-region="client-list">' + clientsRows + '</ul></div>' +
-    (awaitingClients.length ? '<div class="panel"><div class="panel-head"><h2>Chờ xác minh kết nối ('+fmt(awaitingClients.length)+')</h2></div><ul class="client-list">' + awaitingRows + '</ul></div>' : ''));
-  const securityPage = viewPage('security','Bảo mật','<div class="panel security-panel"><h2>Bảo vệ kết nối</h2><p>Chỉ chia sẻ khóa ghép nối với thiết bị bạn tin tưởng. Thu hồi quyền có thể ngắt thiết bị đang chạy.</p><details class="danger-option"><summary class="button subtle">Thao tác nguy hiểm ' + ico('chevron') + '</summary>' +
-    postForm('/dashboard/devices/revoke-all','<label class="confirm-label"><input type="checkbox" name="confirm" value="yes" required> Tôi hiểu mọi thiết bị sẽ bị ngắt</label><button type="submit" class="button danger">Thu hồi toàn bộ thiết bị</button>') + '</details></div>');
+    '<div class="panel"><div class="panel-head"><h2>Ứng dụng đã kết nối</h2></div><ul class="client-list" data-live-region="client-list">' + clientsRows + '</ul></div>' +
+    (awaitingClients.length ? '<div class="panel"><div class="panel-head"><h2>Chờ kết nối ('+fmt(awaitingClients.length)+')</h2></div><ul class="client-list">' + awaitingRows + '</ul></div>' : ''));
+  const securityPage = viewPage('security','Bảo mật','<div class="panel security-panel"><details class="danger-option"><summary class="button subtle">Thu hồi toàn bộ thiết bị ' + ico('chevron') + '</summary>' +
+    postForm('/dashboard/devices/revoke-all','<p class="security-warning">Tất cả thiết bị sẽ mất kết nối và phải ghép nối lại.</p><label class="confirm-label"><input type="checkbox" name="confirm" value="yes" required> Tôi hiểu mọi thiết bị sẽ bị ngắt</label><button type="submit" class="button danger">Xác nhận thu hồi</button>') + '</details></div>');
   // Keep old deep links functional; navigation now prioritizes user-requested overview dialogs.
   const devicePage = viewPage('devices','Thiết bị', '<div class="panel"><div class="panel-head"><h2>Quản lý thiết bị</h2>' + button('Thêm thiết bị','plus','add-device-dialog','button primary') + '</div><div class="device-list" data-live-region="device-full-list">' + allDevices + '</div></div>');
   const connectionPage = viewPage('connection','Kết nối MCP','<div class="panel mcp-panel"><h2>Địa chỉ MCP</h2><input class="copy-field" id="mcp-secondary" readonly value="' + esc(endpoint) + '"><button type="button" class="button subtle" data-copy-target="mcp-secondary">Sao chép</button></div>');

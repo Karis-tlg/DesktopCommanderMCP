@@ -28,7 +28,7 @@ const simulatedDevices=Object.fromEntries(Array.from({length:additionalDevices},
 }));
 const tools=Array.from({length:25},(_,i)=>({name:'tool_'+i,description:'Local device tool',inputSchema:{type:'object',properties:{}}}));
 fs.writeFileSync(path.join(dir,'db.json'), JSON.stringify({
-  clients: {'demo':{client_id:'demo-client-just-for-ui',client_name:'ChatGPT Connector'}},
+  clients: {'demo':{client_id:'demo-client-just-for-ui',client_name:'ChatGPT Connector',verifiedAt:now,lastMcpAt:now},'waiting':{client_id:'pending-client-just-for-ui',client_name:'Pending MCP',approvedAt:now}},
   codes:{},access:{},refresh:{},
   devices:{
     vps:{id:'vps',alias:'vps',displayName:'VPS Production',tokenHash:digest(vpsToken),platform:'linux',tools,createdAt:now-86400,lastSeen:now,protected:true,agentVersion:'preview'},
@@ -83,7 +83,8 @@ try {
   await page.setViewport({width:1440,height:960,deviceScaleFactor:1});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(root+'/dashboard',{waitUntil:'domcontentloaded'});
-  assert((await page.content()).includes('Chào mừng trở lại'),'login must render');
+  assert((await page.content()).includes('Đăng nhập'),'login must render');
+  assert(!(await page.content()).includes('Nhập mật khẩu quản trị để mở trung tâm điều khiển'),'redundant login hint must not render');
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-login.png'),fullPage:true});
   await page.type('#admin-password',admin);
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('.login-form button')]);
@@ -232,6 +233,27 @@ try {
     assert.equal(state.active,route);
     assert.equal(state.urlView,route);
     assert(state.forms && state.width<=state.viewport+2,'invalid '+route+' view');
+    if(route==='clients'){
+      assert.equal(await page.$eval('[data-view="clients"] .panel h2',el=>el.textContent),'Ứng dụng đã kết nối');
+      const t=await page.$eval('[data-view="clients"]',el=>el.textContent);
+      assert(!t.includes('Chỉ hiển thị ứng dụng')&&!t.includes('Đã xác minh kết nối MCP'),'redundant verified paragraphs removed');
+      assert(t.includes('ChatGPT Connector')&&t.includes('Kết nối lần cuối'),'keep name and useful last-connection timestamp');
+      assert(t.includes('Chờ kết nối (1)')&&t.includes('Pending MCP'),'pending applications remain distinguishable');
+      assert.equal(await page.$eval('.client-technical-id',el=>el.getClientRects().length),0,'OAuth ID should be hidden until expanding details');
+      await page.click('[data-live-region="client-list"] details summary');
+      assert((await page.$eval('[data-live-region="client-list"] details .client-technical-id',el=>el.textContent)).includes('demo-client-just-for-ui'),'full client ID remains accessible for audits');
+      assert(await page.$('[data-live-region="client-list"] form [name="_csrf"]'),'revoke form must preserve CSRF');
+      await page.click('[data-live-region="client-list"] details summary');
+      assert.equal(await page.$eval('.client-technical-id',el=>el.getClientRects().length),0,'closed client ID must not take visual space');
+      await page.screenshot({path:path.join(artifacts,'karis-dashboard-access-clean.png')});
+    }
+    if(route==='security'){
+      assert.equal((await page.$$('.security-panel > p')).length,0,'repetitive security paragraph should be removed');
+      assert((await page.$eval('.security-panel summary',el=>el.textContent)).includes('Thu hồi toàn bộ thiết bị'),'danger action must remain identifiable');
+      await page.click('.security-panel summary');
+      assert((await page.$eval('.security-warning',el=>el.textContent)).includes('phải ghép nối lại'),'important safety consequence must remain at action');
+      assert(await page.$('.security-panel form [name="_csrf"]'),'danger confirmation must remain CSRF protected');
+    }
   }
   for (const route of ['devices','connection']) {
     await page.goto(root+'/dashboard?view='+route,{waitUntil:'domcontentloaded'});
@@ -266,6 +288,7 @@ try {
     await page.goto(root+'/dashboard?view='+route,{waitUntil:'domcontentloaded'});
     const state=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:innerWidth}));
     assert(state.width<=state.viewport+2,'mobile overflow '+route);
+    if(route==='clients') await page.screenshot({path:path.join(artifacts,'karis-dashboard-access-clean-mobile.png')});
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   await page.evaluate(()=>{

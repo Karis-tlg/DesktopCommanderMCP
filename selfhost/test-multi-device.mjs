@@ -194,7 +194,7 @@ async function oauthClient() {
   const token = await tokenRes.json();
   assert.equal(tokenRes.status, 200, JSON.stringify(token));
   const pendingPage = await (await fetch(root + '/dashboard?view=clients', {headers:{Cookie:cookie}})).text();
-  assert(pendingPage.includes('Karis multi-device E2E') && pendingPage.includes('Chờ xác minh kết nối'),
+  assert(pendingPage.includes('Karis multi-device E2E') && pendingPage.includes('Chờ kết nối ('),
     'token exchange alone must still be shown as unverified');
   return token.access_token;
 }
@@ -337,7 +337,7 @@ try {
   await client.connect(transport); clientConnected = true;
   const list = await client.listTools();
   const verifiedPage = await (await fetch(root + '/dashboard?view=clients', {headers:{Cookie:cookie}})).text();
-  assert(verifiedPage.includes('Karis multi-device E2E') && verifiedPage.includes('Đã xác minh kết nối MCP'),
+  assert(verifiedPage.includes('Karis multi-device E2E') && verifiedPage.includes('Ứng dụng đã kết nối'),
     'successful authenticated MCP connection must be displayed as verified');
   assert(list.tools.some(t => t.name === 'probe'), 'device tools should be merged by name');
   assert(list.tools.some(t => t.name === 'get_config'), 'full local Desktop Commander tools should be exposed');
@@ -393,7 +393,7 @@ try {
   assert.equal(stats.quota, 'none');
   assert(stats.totalToolCalls >= 4);
   const dashboardAfterCalls = await (await fetch(root + '/dashboard?view=activity', { headers: { Cookie: cookie } })).text();
-  assert(dashboardAfterCalls.includes('Lịch sử hoạt động'));
+  assert(dashboardAfterCalls.includes('Lịch sử'));
   assert(dashboardAfterCalls.includes('probe'));
   const overviewAfterCalls = await (await fetch(root + '/dashboard?view=overview', { headers: { Cookie: cookie } })).text();
   assert(overviewAfterCalls.includes('Hoạt động gần đây'));

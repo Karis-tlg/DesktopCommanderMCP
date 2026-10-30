@@ -1765,3 +1765,14 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
 }
 .dashboard-body .device-dropdown-panel .dropdown-startup-button:hover{background:#2a6955}
 .dashboard-body .device-dropdown-panel .dropdown-startup-button:focus-visible{outline:3px solid #72e7c9;outline-offset:2px}
+
+
+/* Compact copy: keep technical OAuth identifiers inside revoke disclosure only. */
+.dashboard-body .client-technical-id{
+  display:block;max-width:320px;overflow-wrap:anywhere;margin:9px 0 1px;
+  color:#afc1ce;font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace
+}
+.dashboard-body .security-panel .security-warning{
+  margin:0;color:#f0bab3;font-size:14px;line-height:1.5
+}
+.dashboard-body .client-row details:not([open]) > :not(summary){display:none}
