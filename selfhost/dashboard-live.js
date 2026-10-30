@@ -162,6 +162,22 @@
             const badge = row.querySelector('.status-badge');
             const fresh = incoming.get(row.dataset.deviceId)?.querySelector('.status-badge');
             if (badge && fresh && badge.outerHTML !== fresh.outerHTML) badge.replaceWith(fresh.cloneNode(true));
+            // Keep an open dropdown's startup controls consistent with the newly
+            // reported agent state, without replacing the device row/popover.
+            const currentStartup = row.querySelector('.dropdown-startup');
+            const nextStartup = incoming.get(row.dataset.deviceId)?.querySelector('.dropdown-startup');
+            if (currentStartup && nextStartup) {
+              const currentSummary = currentStartup.querySelector('.startup-status');
+              const nextSummary = nextStartup.querySelector('.startup-status');
+              if (currentSummary && nextSummary) currentSummary.textContent = nextSummary.textContent;
+              const currentBody = currentStartup.querySelector('.dropdown-disclosure-body');
+              const nextBody = nextStartup.querySelector('.dropdown-disclosure-body');
+              if (currentBody && nextBody && currentBody.innerHTML !== nextBody.innerHTML) {
+                currentBody.innerHTML = nextBody.innerHTML;
+                const panel = row.querySelector('[data-device-popover]:popover-open');
+                if (panel) requestAnimationFrame(() => positionDropdown(panel));
+              }
+            }
           }
           if (modalIsOpen && !sameDevices) managerNeedsSync = true;
           continue; // Preserve button nodes, focus and open popovers during realtime refreshes.

@@ -60,7 +60,21 @@ try {
   for(const token of [vpsToken,pcToken]){
     const ws=new WebSocket(root.replace('http','ws')+'/agent',{headers:{Authorization:'Bearer '+token}});
     await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject)});
-    ws.send(JSON.stringify({kind:'register',platform:token===pcToken?'win32':'linux',agentVersion:'preview',tools}));
+    const isPc=token===pcToken;
+    ws.send(JSON.stringify({kind:'register',platform:isPc?'win32':'linux',agentVersion:'preview',tools,
+      startup:isPc ? {supported:true,configured:true,enabled:false,mode:'login',managed:false}
+                  : {supported:true,configured:true,enabled:true,mode:'system',managed:true}}));
+    if(isPc){
+      let enabled=false;
+      ws.on('message',raw=>{
+        let data;try{data=JSON.parse(String(raw))}catch{return;}
+        if(data.kind!=='startup'||!data.id)return;
+        if(data.args?.action==='enable')enabled=true;
+        else if(data.args?.action==='disable')enabled=false;
+        const result={supported:true,configured:true,enabled,mode:'login',managed:false};
+        ws.send(JSON.stringify({kind:'response',id:data.id,result}));
+      });
+    }
     sockets.push(ws);
   }
   await sleep(120);
@@ -98,6 +112,9 @@ try {
   assert(!(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open)),'Overview Manage must not open the full devices window');
   assert.equal(await page.$eval('#device-menu-quick-vps',el=>el.querySelectorAll('.dropdown-alias').length),0,'duplicate small device name must be removed');
   assert.equal(await page.$eval('#device-menu-quick-vps .device-dropdown-title',el=>el.textContent),'VPS Production','retain one readable device name');
+  await page.click('#device-menu-quick-vps .dropdown-startup summary');
+  assert((await page.$eval('#device-menu-quick-vps .dropdown-startup',el=>el.textContent)).includes('Đã bật tự khởi động qua systemd'),'VPS startup should be read-only systemd service');
+  assert.equal((await page.$$('#device-menu-quick-vps .dropdown-startup button')).length,0,'cannot disable protected systemd service from dashboard');
   assert.equal(await page.$eval('[data-live-region="preview-devices"] [data-device-id="vps"] .manage-button',el=>el.getAttribute('aria-expanded')),'true');
   await page.click('#device-menu-quick-vps .dropdown-disclosure summary');
   await page.waitForFunction(()=>{
@@ -110,6 +127,35 @@ try {
   await page.keyboard.press('Escape');
   assert(!(await page.evaluate(()=>document.querySelector('#device-menu-quick-vps').matches(':popover-open'))),'Escape must close quick dropdown');
   await page.waitForFunction(()=>document.querySelector('[data-live-region="preview-devices"] [data-device-id="vps"] .manage-button')?.getAttribute('aria-expanded')==='false',{timeout:2000});
+  // Startup settings are real server-mediated agent RPCs, not a cosmetic toggle.
+  await page.click('.devices-panel .panel-actions [data-open-dialog="devices-dialog"]');
+  await page.click('#devices-dialog [data-device-id="pc-one"] .device-options-trigger');
+  await page.click('#device-menu-pc-one .dropdown-startup summary');
+  assert((await page.$eval('#device-menu-pc-one .dropdown-startup .startup-status',el=>el.textContent)).includes('Đang tắt'),'PC must begin disabled');
+  const csrf=await page.$eval('#devices-dialog [data-device-id="pc-one"] .dropdown-startup [name="_csrf"]',el=>el.value);
+  const toggle=async action=>page.evaluate(async args=>{
+    const response=await fetch('/dashboard/devices/pc-one/startup',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({_csrf:args.csrf,action:args.action})});
+    return {status:response.status,html:await response.text()};
+  },{csrf,action});
+  const enabledResponse=await toggle('enable');
+  assert.equal(enabledResponse.status,200);
+  assert(enabledResponse.html.includes('Đang bật'),'server must render acknowledged enabled status');
+  const disabledResponse=await toggle('disable');
+  assert.equal(disabledResponse.status,200);
+  assert(disabledResponse.html.includes('Đang tắt'),'server must render acknowledged disabled status');
+  const invalidResponse=await toggle('invalid');
+  assert.equal(invalidResponse.status,400,'arbitrary startup action must be rejected');
+  const protectedResponse=await page.evaluate(async token=>{
+    const r=await fetch('/dashboard/devices/vps/startup',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({_csrf:token,action:'disable'})});
+    return {status:r.status,body:await r.text()};
+  },csrf);
+  assert(protectedResponse.body.includes('do hệ thống quản lý'),'protected VPS service must remain unchanged');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   // Search still indexes alias without rendering its duplicate as visible text.
   await page.click('.add-trigger');
   assert(await page.evaluate(()=>document.querySelector('#add-device-dialog')?.open),'add-device must open modal');
@@ -161,9 +207,9 @@ try {
   assert((await page.$eval('[data-live-region="activity-pagination"]',e=>e.textContent)).includes('21–40'),'pagination range mismatch');
   await page.click('a[rel="next"]');
   assert.equal(new URL(page.url()).searchParams.get('page'),'3');
-  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,Math.min(20,activityEntries-40));
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,Math.min(20,Math.min(500,activityEntries+2)-40));
   await page.goto(root+'/dashboard?view=activity&page=9999',{waitUntil:'domcontentloaded'});
-  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,(activityEntries%20)||20,'large activity page should clamp');
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,((Math.min(500,activityEntries+2))%20)||20,'large activity page should clamp');
   await page.goto(root+'/dashboard?view=activity&page=-2',{waitUntil:'domcontentloaded'});
   assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,20,'invalid activity page should reset');
   const noConfirm=await page.evaluate(async()=> {
@@ -198,6 +244,8 @@ try {
   assert(await page.evaluate(()=>document.querySelector('#device-menu-pc-one')?.matches(':popover-open')),'dropdown should be open before SSE disconnect');
   sockets[1].close(1000,'realtime UI verification');
   await page.waitForFunction(()=>[...document.querySelectorAll('#devices-dialog .device-tile')].some(row=>row.textContent.includes('Windows Workstation') && row.querySelector('.status-badge')?.textContent.includes('Ngoại tuyến')),{timeout:15000});
+  await page.click('#device-menu-pc-one .dropdown-startup summary');
+  assert.equal((await page.$$('#device-menu-pc-one .dropdown-startup button')).length,0,'offline agent must not offer a startup toggle');
   assert(await page.evaluate(()=>document.querySelector('#device-menu-pc-one')?.matches(':popover-open')),'SSE must preserve open dropdown');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');

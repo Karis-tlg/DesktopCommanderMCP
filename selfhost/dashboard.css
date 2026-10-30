@@ -1751,3 +1751,17 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
 .dashboard-body .device-dropdown-panel .danger-disclosure>summary{color:#e7aca7}
 
 @media(max-width:500px){.dashboard-body .device-dropdown-panel{font-size:14px}}
+
+/* Opt-in startup management inside existing device dropdowns. */
+.dashboard-body .device-dropdown-panel .dropdown-startup>summary{gap:7px}
+.dashboard-body .device-dropdown-panel .dropdown-startup>summary .startup-status{
+  margin-left:auto;color:#b9d6cc;font-size:12px;font-weight:650;white-space:nowrap;
+}
+.dashboard-body .device-dropdown-panel .dropdown-startup>summary .icon{flex-shrink:0}
+.dashboard-body .device-dropdown-panel .dropdown-startup .dropdown-disclosure-body{padding-top:7px}
+.dashboard-body .device-dropdown-panel .dropdown-startup-button{
+  min-height:42px;width:100%;padding:9px 12px;color:#e9fbf5;font-size:14px;font-weight:650;
+  background:#225345;border:1px solid #3c806c;border-radius:8px;cursor:pointer;
+}
+.dashboard-body .device-dropdown-panel .dropdown-startup-button:hover{background:#2a6955}
+.dashboard-body .device-dropdown-panel .dropdown-startup-button:focus-visible{outline:3px solid #72e7c9;outline-offset:2px}

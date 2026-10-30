@@ -7,7 +7,7 @@ const slug = value => String(value || 'device').toLowerCase().replace(/[^a-z0-9_
 const now = () => Math.floor(Date.now() / 1000);
 const dashboardLiveScript = readFileSync(new URL('./dashboard-live.js', import.meta.url), 'utf8');
 
-export function registerDashboard({ app, db, save, adminKey, issuer, devices, onChange, random, digest, equal, maxDevices, failures, agentPackageUrl }) {
+export function registerDashboard({ app, db, save, adminKey, issuer, devices, onChange, random, digest, equal, maxDevices, failures, agentPackageUrl, rpc }) {
   const sessions = new Map();
   const secure = issuer.protocol === 'https:' ? '; Secure' : '';
   const cookieName = 'karis_admin';
@@ -70,7 +70,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
       return {
         id: d.id, alias: d.alias, displayName: d.displayName, platform: d.platform,
         online: !!live && live.ws?.readyState === 1, toolCount: (d.tools || []).length,
-        lastSeen: d.lastSeen, isDefault: db.defaultDeviceId === d.id, protected: !!d.protected
+        lastSeen: d.lastSeen, isDefault: db.defaultDeviceId === d.id, protected: !!d.protected, startup: d.startup || null
       };
     });
     const html = renderConsoleView({
@@ -156,7 +156,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
         devices: deviceList().map(d => {
           const live = devices.get(d.id);
           return [d.id, d.displayName, d.platform, !!live && live.ws?.readyState === 1,
-                  d.lastSeen, (d.tools || []).length, db.defaultDeviceId === d.id];
+                  d.lastSeen, (d.tools || []).length, db.defaultDeviceId === d.id, d.startup?.enabled ?? null, d.startup?.configured ?? null];
         }),
         calls: Number(db.usage?.totalCalls) || 0,
         clients: Object.values(db.clients || {}).map(c=>[c.client_id,c.approvedAt||0,c.verifiedAt||0,c.lastMcpAt||0]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
@@ -240,6 +240,25 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     }
     db.defaultDeviceId = deviceList()[0]?.id || '';
     save(); onChange(); res.redirect(303, '/dashboard?view=security');
+  });
+  app.post('/dashboard/devices/:id/startup', async (req,res) => {
+    const found = requireSession(req,res); if(!found)return;
+    const record = db.devices[req.params.id];
+    if(!record || record.revokedAt) { res.status(404).type('text').send('Unknown device'); return; }
+    const action=req.body?.action;
+    if(action!=='enable' && action!=='disable'){res.status(400).type('text').send('Invalid startup action');return;}
+    if(!record.startup?.supported || record.startup.managed || record.protected || devices.get(record.id)?.ws?.readyState!==1){
+      render(req,res,'Thiết bị ngoại tuyến, chưa hỗ trợ hoặc do hệ thống quản lý. Chưa thay đổi cấu hình khởi động.');return;
+    }
+    try{
+      const result=await rpc(record.id,'startup',{action},12000);
+      if(!result || result.supported!==true || result.enabled!==(action==='enable'))throw Error('Thiết bị chưa xác nhận cấu hình mới');
+      record.startup={
+        supported:true,configured:result.configured===true,enabled:result.enabled,mode:result.mode==='system'?'system':'login',
+        managed:result.managed===true,reason:'',checkedAt:now()
+      };
+      save();onChange();res.redirect(303,'/dashboard?view=overview');
+    }catch(e){render(req,res,'Không đổi được cấu hình khởi động: '+String(e?.message||'Không xác định').slice(0,160));}
   });
   app.post('/dashboard/devices/:id/default', (req, res) => {
     const found = requireSession(req, res); if (!found) return;

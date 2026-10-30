@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { controllerTools, callController } from './controllers.mjs';
+import { readStartup, setStartup } from './startup.mjs';
 
 const args=process.argv.slice(2);
 const flag = name => {const ix=args.indexOf(name);return ix>=0?args[ix+1]:undefined};
@@ -17,6 +18,7 @@ const conf=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8
 let endpoint=flag('--endpoint')||process.env.KARIS_RELAY_URL||conf.endpoint;
 let token=flag('--token')||process.env.KARIS_AGENT_TOKEN||conf.token;
 let displayName=flag('--name')||process.env.KARIS_AGENT_DEVICE_NAME||conf.name||(process.platform==='win32'?'windows':'device');
+const startupContext = () => ({platform:process.platform,configDir,entry:path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','index.js'),nodePath:process.execPath,protectedDevice:process.platform==='linux' && !!process.env.KARIS_AGENT_TOKEN});
 async function prompt(){
  if(endpoint && (token || /^\/(?:pair|mcp)\/[A-Za-z0-9_-]{40,}$/.test(new URL(endpoint).pathname))) return;
  if(!process.stdin.isTTY)throw Error('Pass --endpoint and --token, or set KARIS_RELAY_URL and KARIS_AGENT_TOKEN');
@@ -76,7 +78,7 @@ export async function runAgent(){
    const socket=new WebSocket(uri.href,{headers:{Authorization:`Bearer ${token}`},handshakeTimeout:10000,maxPayload:2*1024*1024});live=socket;
    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);socket.once('unexpected-response',(_,res)=>reject(new Error(`WS HTTP ${res.statusCode}`)));});
    attempt=0;console.log(`Connected to private relay: ${uri.origin}`);
-   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.4'}));
+   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.4',startup:readStartup(startupContext())}));
    await new Promise(resolve=>{
     socket.on('message',async raw=>{let data;try{data=JSON.parse(raw.toString())}catch{return;}
      if(!data.id)return;
@@ -87,6 +89,14 @@ export async function runAgent(){
      if(data.kind==='shutdown'){
       if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result:{content:[{type:'text',text:'Device agent is shutting down.'}]}}));
       setTimeout(()=>{void end();},75);
+      return;
+     }
+     if(data.kind==='startup'){
+      try{
+       const action=data.args?.action;
+       const result=action==='status' ? readStartup(startupContext()) : setStartup(action,startupContext());
+       if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result}));
+      }catch(e){if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,error:String(e?.message||'Startup configuration failed').slice(0,250)}));}
       return;
      }
      if(data.kind!=='call')return;

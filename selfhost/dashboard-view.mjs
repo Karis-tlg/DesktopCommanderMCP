@@ -92,6 +92,30 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
   const status = d => '<span class="status-badge ' + (d.online ? 'connected' : 'disconnected') + '"><span class="status-dot ' + (d.online ? 'is-online' : '') + '"></span>' + (d.online ? 'Trực tuyến' : 'Ngoại tuyến') + '</span>';
   const platform = d => /win/i.test(d.platform) ? 'monitor' : /mac|darwin/i.test(d.platform) ? 'laptop' : /linux/i.test(d.platform) ? 'server' : 'globe';
   const platformLabel = d => /win/i.test(d.platform) ? 'Windows' : /mac|darwin/i.test(d.platform) ? 'macOS' : /linux/i.test(d.platform) ? 'Linux / VPS' : 'Thiết bị';
+  const startupControls = d => {
+    const info = d.startup;
+    const supported = info?.supported === true;
+    const enabled = info?.enabled === true;
+    const managed = info?.managed === true || d.protected;
+    const label = !supported ? 'Chưa hỗ trợ' : enabled ? 'Đang bật' : 'Đang tắt';
+    const help = managed ? '<p>Service trên VPS được quản lý bằng systemd. Không thay đổi từ dashboard.</p>' :
+      info?.mode === 'login' ? '<p>Agent sẽ tự chạy khi đăng nhập vào máy, không cần mở bằng tay. Máy phải được bật và người dùng đăng nhập.</p>' :
+      '<p>Chỉ hỗ trợ agent đã cập nhật và hệ điều hành có trình quản lý khởi động.</p>';
+    let action = '';
+    if (!supported) {
+      action = '<p>' + esc(d.online ? 'Agent chưa hỗ trợ. Cập nhật agent trên thiết bị để sử dụng.' : 'Thiết bị ngoại tuyến hoặc agent chưa hỗ trợ.') + '</p>';
+    } else if (managed) {
+      action = '<p>' + (enabled ? 'Đã bật tự khởi động qua systemd.' : 'Chưa bật service tự khởi động.') + '</p>';
+    } else if (!d.online) {
+      action = '<p>Thiết bị đang ngoại tuyến. Hãy kết nối lại trước khi thay đổi.</p>';
+    } else {
+      action = postForm('/dashboard/devices/' + encodeURIComponent(d.id) + '/startup',
+        '<button type="submit" class="dropdown-startup-button" name="action" value="' + (enabled ? 'disable' : 'enable') + '">' +
+        (enabled ? 'Tắt tự khởi động' : 'Bật tự khởi động') + '</button>');
+    }
+    return '<details class="dropdown-disclosure dropdown-startup"><summary>Chạy khi khởi động máy <span class="startup-status">' +
+      esc(label) + '</span>' + ico('chevron') + '</summary><div class="dropdown-disclosure-body">' + help + action + '</div></details>';
+  };
   const deviceDropdown = (d, quick = false) => {
     const id = encodeURIComponent(d.id), path = '/dashboard/devices/' + id;
     const suffix = (quick ? 'quick-' : '') + id;
@@ -101,6 +125,7 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
       '<strong class="device-dropdown-title">' + esc(d.displayName || d.alias) + '</strong>' +
       (d.isDefault ? '<span class="device-dropdown-default">' + ico('shield') + ' Máy mặc định</span>' :
         postForm(path + '/default', '<button type="submit" class="dropdown-action">Đặt làm mặc định</button>')) +
+      startupControls(d) +
       '<details class="dropdown-disclosure"><summary>Xem kết nối ' + ico('chevron') + '</summary>' +
       '<div class="dropdown-disclosure-body"><label for="' + esc(endpointId) + '">MCP endpoint</label><div class="dropdown-copy">' +
       '<input id="' + esc(endpointId) + '" readonly value="' + esc(endpoint) + '">' +

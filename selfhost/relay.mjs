@@ -501,6 +501,11 @@ wss.on('connection', ws => {
       record.lastSeen = now();
       record.platform = String(msg.platform || record.platform || 'unknown').slice(0, 40);
       record.agentVersion = String(msg.agentVersion || record.agentVersion || 'unknown').slice(0, 40);
+      record.startup = msg.startup && typeof msg.startup === 'object' && typeof msg.startup.supported === 'boolean'
+        ? {supported:msg.startup.supported,configured:msg.startup.configured === true,enabled:typeof msg.startup.enabled === 'boolean' ? msg.startup.enabled : null,
+           managed:msg.startup.managed === true,mode:['system','login','unknown'].includes(msg.startup.mode) ? msg.startup.mode : 'unknown',
+           reason:String(msg.startup.reason || '').slice(0,150),checkedAt:now()}
+        : null;
       devices.set(id, { ws, alias: record.alias, displayName: record.displayName, tools: clean });
       currentId = id;
       if (!db.defaultDeviceId || !db.devices[db.defaultDeviceId] || db.devices[db.defaultDeviceId].revokedAt) db.defaultDeviceId = record.protected ? id : (activeRecords().find(d => d.protected)?.id || id);
@@ -557,7 +562,7 @@ heartbeat.unref();
 rebuildTools();
 registerDashboard({
   app, db, save, adminKey, issuer, devices, onChange: rebuildTools, random, digest, equal,
-  maxDevices: MAX_DEVICES, failures, agentPackageUrl: appDevicePackage
+  maxDevices: MAX_DEVICES, failures, agentPackageUrl: appDevicePackage, rpc
 });
 
 const sweep=setInterval(()=>{cleanup();for(const [k,v] of pending) if(v.exp<=now() || !db.clients[v.clientId])pending.delete(k);for(const [k,v] of failures)if(v.exp<now())failures.delete(k);savePending();},300000);sweep.unref();
