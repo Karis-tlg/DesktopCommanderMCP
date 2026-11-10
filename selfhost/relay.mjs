@@ -341,7 +341,7 @@ const handleMcp = async (req, res, forcedDevice = null) => {
     ? forcedDevice
     : forcedDevice ? (activeRecords().find(d => d.id === forcedDevice || String(d.alias || '').toLowerCase() === String(forcedDevice).toLowerCase()) || null) : null;
   if (forcedDevice && (!forcedRecord || forcedRecord.revokedAt || !activeRecords().some(d => d.id === forcedRecord.id))) { res.status(404).send('Unknown target device'); return; }
-  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.4' }, {
+  const server = new Server({ name: 'karis-selfhost-mcp', version: process.env.KARIS_VERSION || '0.3.4-karis.5' }, {
     capabilities: { tools: {} },
     instructions: forcedRecord
       ? 'Private self-hosted Desktop Commander MCP. This endpoint is locked to device ' + forcedRecord.alias + '. All file and terminal tools execute on that device; requests cannot switch to another device. Do not run destructive commands unless the user requests them.'
@@ -371,7 +371,7 @@ const handleMcp = async (req, res, forcedDevice = null) => {
         recordActivity('service', route.originalName, 'ok', 0);
         return textResult({
           service: 'Karis Desktop Commander self-host',
-          version: process.env.KARIS_VERSION || '0.3.4-karis.4',
+          version: process.env.KARIS_VERSION || '0.3.4-karis.5',
           quota: 'No vendor 10,000-calls/month quota is enforced by this self-host',
           connectedDevices: devices.size,
           pairedDevices: activeRecords().length,
@@ -455,7 +455,7 @@ const handleMcp = async (req, res, forcedDevice = null) => {
 };
 
 const appDevicePackage = process.env.KARIS_AGENT_PACKAGE_URL ||
-  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.4/karis-tlg-desktop-commander-0.3.4-karis.4.tgz';
+  'https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.5/karis.tgz';
 
 const appServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });

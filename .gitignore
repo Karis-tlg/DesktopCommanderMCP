@@ -9,6 +9,7 @@ dist/
 *.tsbuildinfo
 
 # IDE and editor files
+.claude/settings.local.json
 .idea/
 .vscode/
 *.swp

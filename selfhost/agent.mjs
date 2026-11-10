@@ -15,7 +15,9 @@ const flag = name => {const ix=args.indexOf(name);return ix>=0?args[ix+1]:undefi
 const configDir=process.env.KARIS_AGENT_CONFIG_DIR||path.join(os.homedir(),'.karis-desktop-commander-agent');
 const configFile=path.join(configDir,'config.json');
 const conf=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8')):{};
-let endpoint=flag('--endpoint')||process.env.KARIS_RELAY_URL||conf.endpoint;
+// The dashboard's pairing command may supply a single URL after `remote`.
+const pairingUrl=args.slice(1).find(value=>/^https?:\/\//i.test(value));
+let endpoint=flag('--endpoint')||pairingUrl||process.env.KARIS_RELAY_URL||conf.endpoint;
 let token=flag('--token')||process.env.KARIS_AGENT_TOKEN||conf.token;
 let displayName=flag('--name')||process.env.KARIS_AGENT_DEVICE_NAME||conf.name||(process.platform==='win32'?'windows':'device');
 const startupContext = () => ({platform:process.platform,configDir,entry:path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','index.js'),nodePath:process.execPath,protectedDevice:process.platform==='linux' && !!process.env.KARIS_AGENT_TOKEN});
@@ -32,9 +34,10 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
 export async function runAgent(){
  if(args.includes('--help') || args.includes('-h')) {
   console.log('Karis Desktop Commander self-host remote agent');
-  console.log('Usage: desktop-commander remote --endpoint https://host/pair/SECRET [--name windows]');
-  console.log('Paste the one-time device pairing URL from the self-host dashboard.');
-  console.log('Options: --endpoint URL, --name DEVICE_NAME, --no-save, --help');
+  console.log('Usage: desktop-commander remote https://your-relay/pair/PAIRING_KEY');
+  console.log('Paste the complete command from Karis Control → Devices → Connect.');
+  console.log('Requires Node.js 22.12+, HTTPS relay and a short-lived device pairing key.');
+  console.log('Options: --endpoint URL, --token KEY, --name DEVICE_NAME, --no-save, --help');
   return;
  }
  await prompt();
@@ -78,12 +81,12 @@ export async function runAgent(){
    const socket=new WebSocket(uri.href,{headers:{Authorization:`Bearer ${token}`},handshakeTimeout:10000,maxPayload:2*1024*1024});live=socket;
    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);socket.once('unexpected-response',(_,res)=>reject(new Error(`WS HTTP ${res.statusCode}`)));});
    attempt=0;console.log(`Connected to private relay: ${uri.origin}`);
-   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.4',startup:readStartup(startupContext())}));
+   socket.send(JSON.stringify({kind:'register',deviceId,name:displayName,tools,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.5',startup:readStartup(startupContext())}));
    await new Promise(resolve=>{
     socket.on('message',async raw=>{let data;try{data=JSON.parse(raw.toString())}catch{return;}
      if(!data.id)return;
      if(data.kind==='ping'){
-      if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result:{content:[{type:'text',text:JSON.stringify({ok:true,name:displayName,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.4',uptimeSeconds:Math.floor(process.uptime())})}]}}));
+      if(socket.readyState===1)socket.send(JSON.stringify({kind:'response',id:data.id,result:{content:[{type:'text',text:JSON.stringify({ok:true,name:displayName,platform:process.platform,agentVersion:process.env.KARIS_VERSION||'0.3.4-karis.5',uptimeSeconds:Math.floor(process.uptime())})}]}}));
       return;
      }
      if(data.kind==='shutdown'){

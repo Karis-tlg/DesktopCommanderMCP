@@ -100,7 +100,7 @@ async function addDevice(displayName, alias, simulateProxyHost = false) {
   const page = await fetch(new URL(pairingLocation,root), { headers: { Cookie: cookie } });
   assert.equal(page.status, 200);
   const html = await page.text();
-  const match = html.match(/--token ([A-Za-z0-9_-]{40,}) --name /);
+  const match = html.match(/\/pair\/([A-Za-z0-9_-]{40,})/);
   assert(match, 'dashboard should show a single complete pairing command');
   return match[1];
 }
@@ -308,7 +308,7 @@ try {
   // Isolate test agent from this VPS's real production pairing environment.
   const isolatedEnv = {...process.env};
   for (const key of ['KARIS_AGENT_TOKEN','KARIS_RELAY_URL','KARIS_AGENT_CONFIG_DIR','KARIS_AGENT_DEVICE_NAME','KARIS_MCP_HOME']) delete isolatedEnv[key];
-  realAgent = spawn(process.execPath, [path.join(sourceRoot, 'dist', 'index.js'), 'remote', '--endpoint', root + '/pair/' + realAgentToken, '--name', 'local_agent', '--no-save'], {
+  realAgent = spawn(process.execPath, [path.join(sourceRoot, 'dist', 'index.js'), 'remote', root + '/pair/' + realAgentToken, '--name', 'local_agent', '--no-save'], {
     cwd: sourceRoot,
     env: { ...isolatedEnv, KARIS_AGENT_CONFIG_DIR: agentConfigDir, KARIS_MCP_HOME: agentHome, KARIS_VERSION: '0.3.4-karis.4' },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -422,8 +422,9 @@ try {
   assert.equal(pairResponse.status,200);
   assert.equal(pairResponse.headers.get('cache-control'),'no-store');
   const pairData = await pairResponse.json();
-  assert(pairData.command.includes(root+'/mcp --token ') && !pairData.command.includes('<KHOA_GHEP_NOI>'));
-  const newPairToken = pairData.command.match(/--token ([A-Za-z0-9_-]{40,}) --name pc_one/)?.[1];
+  assert(pairData.command.includes(root+'/pair/') && !pairData.command.includes('<KHOA_GHEP_NOI>'));
+  assert(pairData.command.startsWith('npx.cmd -y -p '),'Windows should receive a directly runnable npx.cmd one-liner');
+  const newPairToken = pairData.command.match(/\/pair\/([A-Za-z0-9_-]{40,})/)?.[1];
   assert(newPairToken,'command must contain a usable token');
   const pendingDb = JSON.parse(fs.readFileSync(path.join(testDir,'oauth.json'),'utf8')).devices[rePairId];
   assert.equal(pendingDb.tokenHash,beforePair,'generating a command must not rotate the active credential');

@@ -1,75 +1,58 @@
-# Karis Desktop Commander — self-hosted multi-device MCP
+# Karis Control — vận hành self-hosted
 
-This fork keeps the MIT-licensed Desktop Commander local MCP tools and adds an independently implemented self-hosted remote MCP relay, per-device agent credentials, OAuth, and an admin dashboard. The hosted Remote Desktop Commander backend is proprietary; this project implements documented public workflows rather than copying its closed implementation.
+**Ứng dụng độc lập** dựa trên Desktop Commander MCP (MIT). Tài liệu này dành cho người quản trị relay/VPS, **không** dành cho người dùng chỉ muốn ghép nối máy Windows/Linux. Quy trình ghép nối máy: [README.md](README.md).
 
-Current self-host patch release: [selfhost-v0.3.4-karis.4](https://github.com/Karis-tlg/DesktopCommanderMCP/releases/tag/selfhost-v0.3.4-karis.4). Releases `selfhost-v0.3.4-karis.1`, `selfhost-v0.3.4-karis.2`, and `selfhost-v0.3.4-karis.3` are superseded. The older tag `v0.3.4-karis.1` is deprecated because it points to an upstream commit that does not include the self-host patch.
+## Kết nối hiện tại
 
-## Current feature set in source/patch release selfhost-v0.3.4-karis.4
+- Dashboard: `https://panel-rs.tail79e063.ts.net/dashboard`
+- MCP OAuth: `https://panel-rs.tail79e063.ts.net/mcp`
+- Relay nội bộ: `http://127.0.0.1:18791` sau reverse proxy HTTPS
+- VPS project: `/home/ubuntu/workspace/projects/desktop-commander-selfhost/`
+- Source: `source/`; dữ liệu production và khóa ở `runtime/private/` (**không commit**)
+- Service: `karis-mcp-relay.service`, `karis-mcp-agent.service`
 
-- One common MCP endpoint can route tools to any paired device using `target_device`; call `list_paired_devices` to discover aliases. The schema does not freeze an enum of existing aliases, so newly paired devices do not require changing the connector URL or schema enum.
-- Device capacity defaults to 256 and can be configured with `KARIS_MAX_DEVICES`; capacity is bounded by VPS resources, not literally infinite.
+Đây là cấu hình đang dùng trên VPS mẫu, **không mặc định phù hợp với máy chủ mới**.
 
-- One Streamable HTTP MCP endpoint at `/mcp`, protected by OAuth 2.0 authorization-code + PKCE, dynamic client registration, refresh/revoke, and protected-resource metadata.
-- Admin panel at `/dashboard`: admin sign-in, add device, per-device pairing link, choose default device, online/offline and last-seen status, rotate/revoke device, revoke all devices, and revoke individual OAuth clients.
-- Up to 32 registered devices. Each device has a separate high-entropy pairing key stored as a hash on the server. Pair links are shown once and can be rotated.
-- Local Desktop Commander tool schemas are retained. Tools have an optional `target_device` argument; omit it to use the default device. Additional tools include `list_paired_devices`, `get_current_user_info`, `ping_device`, `shutdown_device_agent`, `get_prompt_library`, `get_recent_tool_activity`, `get_usage_statistics`, and `submit_feedback`.
-- Activity records include tool, device, status and duration only; arguments and file contents are not recorded.
-- Device-scoped MCP links use `/mcp/<link-key>/device/<alias>` and pin every file/terminal tool call to that paired device without changing the relay-wide default. The scoped endpoint rejects attempts to switch devices and limits ping/shutdown management tools to the selected device. The legacy `/mcp/<link-key>` endpoint continues using the default device.
+## Thiết lập server mới (làm một lần)
 
-Dashboard forms use a random session-bound CSRF token. A mismatched browser `Origin` behind a proxy/webview no longer blocks a legitimate form when its CSRF token is valid; requests with a hostile Origin and no token remain blocked. Regression-tested with a Host-rewriting proxy, missing-token hostile Origin, and valid-token Origin mismatch.
-- No hosted vendor 10,000 tool-calls/month quota is enforced by this self-host. The vendor's quota is separate and is not changed.
+Yêu cầu: VPS Linux có Node.js 22.12+, HTTPS domain bạn kiểm soát, quyền cài service, và bộ khóa được tạo bảo mật.
 
-## VPS deployment
+1. Clone repository `Karis-tlg/DesktopCommanderMCP` vào thư mục dự án của bạn. `npm ci --ignore-scripts && npm run build`.
+2. Tạo các file owner-only chứa khóa ngẫu nhiên mạnh và URL công khai HTTPS trong cấu hình môi trường. Xem `deploy/systemd/` và `selfhost/relay.mjs` để xác định các biến `KARIS_DB_FILE`, `KARIS_ADMIN_FILE`, `KARIS_AGENT_FILE`, `KARIS_LINK_KEY_FILE`, `KARIS_PUBLIC_URL`. **Không copy khóa từ máy chủ khác.**
+3. Cấu hình reverse proxy/TLS vào relay loopback, sau đó cấu hình systemd chỉ cho đúng hai service Karis. Xác minh trạng thái và OAuth. Không expose port relay trực tiếp ra Internet.
+4. Mở dashboard, đăng nhập quản trị và tạo thiết bị. Gói agent công khai theo release riêng Karis; biến `KARIS_AGENT_PACKAGE_URL` phải trỏ tới **bản release có đầy đủ agent, controller và startup modules**.
 
-- Project: `/home/ubuntu/workspace/projects/desktop-commander-selfhost/`
-- Source: `source/`
-- Public HTTPS origin: [https://panel-rs.tail79e063.ts.net](https://panel-rs.tail79e063.ts.net) (Tailscale Funnel is currently ON and proxies to loopback port 18791).
-- Panel: [https://panel-rs.tail79e063.ts.net/dashboard](https://panel-rs.tail79e063.ts.net/dashboard)
-- MCP endpoint: [https://panel-rs.tail79e063.ts.net/mcp](https://panel-rs.tail79e063.ts.net/mcp)
-- Local endpoint: `http://127.0.0.1:18791/mcp`; local panel: `http://127.0.0.1:18791/dashboard`.
-- Services: `karis-mcp-relay.service` and `karis-mcp-agent.service`, enabled on boot.
-- Secrets: `runtime/private/`, owner-only. Never commit or share the admin password, OAuth tokens, or device pairing links.
-- **Live deployment verified (2026-10-29):** the reverse-proxy Origin fix (`6faa04e`) is active. Both Karis services are running; public health reports `ok=true`, `agent=true`, `maxDevices=32`, `pairedDevices=1`, `toolCount=35`, and `quota=none`. The dashboard serves its admin sign-in page, and the relay listens only on `127.0.0.1:18791` behind Tailscale Funnel. The focused integration test now simulates a proxy rewriting `Host`, confirms legitimate dashboard device creation succeeds, verifies that a malicious Origin is still rejected, and revokes the test device during cleanup.
+Không thể thu gọn triển khai máy chủ công khai thành một lệnh an toàn mà không xử lý khóa và quyền mạng. Sau lần thiết lập server ban đầu, **mỗi thiết bị mới chỉ cần một lệnh từ dashboard**.
 
-## Restart after future source updates
+## Kiểm tra và khởi động lại khi được phép
 
-When deploying future changes, run from a VPS terminal with permission to manage the two named services:
-
-```bash
-cd /home/ubuntu/workspace/projects/desktop-commander-selfhost/source
-./deploy/restart-selfhost.sh
-```
-
-The script restarts only `karis-mcp-relay.service` and `karis-mcp-agent.service`, then checks `/healthz` for the expected 32-device limit and connected agent. The automated service-management action is disabled in the Open VPS Commander policy until its administrator explicitly configures `ALLOW_SERVICE_MANAGE` and `MANAGED_SERVICES`; do not bypass that policy.
-
-## Connect an AI client
-
-Use the MCP endpoint above in ChatGPT, Cursor, VS Code, Claude or another compatible MCP client and complete OAuth once. For each additional computer, sign in to the dashboard, create a device, and run the pairing command shown there. Pairing URLs contain a device credential; do not paste them into the AI connector. Use the `/mcp` OAuth endpoint for AI clients.
-
-Legacy compatibility: the older account-wide `/mcp/<link-key>` endpoint remains enabled for existing clients. Anyone who has that secret URL can access the full tool set without OAuth. Prefer `/mcp` with OAuth for new connections.
-
-## Test and build
-
-```bash
-cd /home/ubuntu/workspace/projects/desktop-commander-selfhost/source
-npm ci --ignore-scripts
-npm run build
-node selfhost/test-multi-device.mjs
-KARIS_TEST_ADMIN_KEY=../runtime/private/admin.key node selfhost/test-relay.mjs
-```
-
-The multi-device test starts an isolated relay on a free loopback port, registers three mock devices plus a real local Desktop Commander agent, verifies core tool routing, activity/usage, ping/shutdown and revocation, then cleans up its own temporary processes/files.
-
-## Operations
-
-```bash
+```sh
 sudo systemctl status karis-mcp-relay.service karis-mcp-agent.service
-cd /home/ubuntu/workspace/projects/desktop-commander-selfhost/source && ./deploy/restart-selfhost.sh
+curl -fsS http://127.0.0.1:18791/healthz
 journalctl -u karis-mcp-relay.service -u karis-mcp-agent.service -n 80 --no-pager
 ```
 
-Only operate on these dedicated services; do not stop generic Node/Java/Python processes or other projects. If the VPS agent is revoked or stopped, the panel remains available but VPS tools will be offline until the agent is re-paired/restarted.
+Sau khi cập nhật mã nguồn relay, kiểm thử trên cổng riêng trước khi cân nhắc restart production. Quy trình cũ `deploy/restart-selfhost.sh` có thể tác động tới **cả relay và agent**; nếu chỉ thay đổi dashboard/relay thì ưu tiên restart chính xác `karis-mcp-relay.service` bởi người có quyền. Không tự dừng Nginx, Tailscale, SSH, Docker hay các service khác.
 
-## Security and remaining work
+## Đóng gói và phát hành
 
-This is a self-hosted preview, not an audited production security product. File and shell tools are powerful; authorize only trusted MCP clients. OAuth client tokens and device pairing credentials are independent. Device secrets are stored hashed in the relay registry; state is stored in an owner-only JSON file. The relay is single-process; do not run multiple relay instances against the same state file. Full cross-platform, load and formal security audits remain outstanding. The full upstream suite did not finish because the PDF tests tried to download/launch Chromium in this VPS environment; do not treat that suite as passing.
+```sh
+npm ci --ignore-scripts
+npm run build
+node selfhost/test-audit.mjs
+node selfhost/test-dashboard-ui.mjs
+node selfhost/test-multi-device.mjs
+npm pack --dry-run
+```
+
+Kiểm tra gói cài có `dist/index.js`, `dist/selfhost/agent.mjs`, `dist/selfhost/controllers.mjs`, `dist/selfhost/startup.mjs`, `dist/selfhost/windows-ui.mjs`. Đăng gói theo tag/release độc lập của Karis; không sử dụng `.github/workflows/release.yml` cũ của upstream hay publish sang npm/MCP registry của upstream.
+
+## Lưu ý bảo mật
+
+- Chỉ cho phép ứng dụng MCP đáng tin cậy; quyền file và terminal của agent là quyền user chạy agent.
+- Phải bảo vệ dashboard bằng HTTPS, đăng nhập quản trị và CSRF; mọi khóa ghép nối có hạn, không được đưa vào query/log hoặc ảnh chụp.
+- Server lưu hash token của thiết bị; DB, profile, cache, secret và bản backup thuộc production, không xóa khi dọn repository.
+- Hoạt động MCP được ghi dưới dạng tóm tắt đã lọc nội dung nhạy cảm; không giả định hệ thống thay thế được audit bảo mật đầy đủ.
+- Nếu có lỗi kết nối, xác minh Node version, release agent, thời hạn khóa, WebSocket và sức khỏe relay trước khi reset/rotate khóa. Việc cấp lại khóa cho máy đang kết nối cần xác nhận rõ.
+
+Nguồn gốc mã: [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP), MIT; dự án Karis tự chịu trách nhiệm thay đổi và phát hành của mình.

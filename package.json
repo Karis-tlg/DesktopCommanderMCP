@@ -1,11 +1,16 @@
 {
   "name": "@karis-tlg/desktop-commander",
-  "version": "0.3.4-karis.4",
+  "version": "0.3.4-karis.5",
   "description": "Karis Control: independently maintained self-hosted MCP and multi-device management, derived from Desktop Commander",
   "mcpName": "io.github.karis-tlg/desktop-commander",
   "license": "MIT",
   "author": "Karis-tlg",
-  "contributors": [{ "name": "Eduards Ruzga", "comment": "Original Desktop Commander project" }],
+  "contributors": [
+    {
+      "name": "Eduards Ruzga",
+      "comment": "Original Desktop Commander project"
+    }
+  ],
   "homepage": "https://github.com/Karis-tlg/DesktopCommanderMCP",
   "repository": {
     "type": "git",
@@ -24,7 +29,6 @@
   "files": [
     "dist",
     "logo.png",
-    "testemonials",
     "vendor/telemetry-contract"
   ],
   "scripts": {
@@ -54,12 +58,6 @@
     "unlink:local": "npm unlink",
     "inspector": "npx @modelcontextprotocol/inspector dist/index.js",
     "build:mcpb": "node scripts/build-mcpb.cjs",
-    "release": "node scripts/publish-release.cjs",
-    "release:minor": "node scripts/publish-release.cjs --minor",
-    "release:major": "node scripts/publish-release.cjs --major",
-    "release:dry": "node scripts/publish-release.cjs --dry-run",
-    "release:rehearsal": "node scripts/publish-release.cjs --rehearsal",
-    "release:alpha": "node scripts/publish-release.cjs --alpha",
     "logs:view": "npm run build && node scripts/view-fuzzy-logs.js",
     "logs:analyze": "npm run build && node scripts/analyze-fuzzy-logs.js",
     "logs:clear": "npm run build && node scripts/clear-fuzzy-logs.js",

@@ -1,72 +1,69 @@
 # Karis Control
 
-**Private, self-hosted MCP workspace and multi-device control panel.**
+**MCP tự lưu trữ, quản lý nhiều thiết bị — phát triển độc lập bởi Karis-tlg.**
 
-Karis Control is an **independently maintained downstream project** built from the open-source [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) codebase. Its development, releases and production infrastructure are managed separately by [Karis-tlg](https://github.com/Karis-tlg). This repository is the authoritative source for Karis Control; upstream changes are reviewed and selectively incorporated, never automatically merged.
+Dựa trên phần mã nguồn [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) (MIT), nhưng **không sử dụng máy chủ hoặc tài khoản Desktop Commander thương mại**. GitHub `main` của dự án này là nguồn phát triển chính; `upstream` chỉ để tham khảo các bản vá phù hợp.
 
-## Capabilities
+## Bắt đầu nhanh — chỉ 3 bước
 
-- Self-hosted **MCP relay** with OAuth authorization and per-device routing.
-- Multi-device Linux / Windows agents, with an authenticated web dashboard.
-- Remote file, terminal, search and process-management tools.
-- Device registration, revocation and expiring connection commands.
-- Compact, redacted MCP activity history and persistent usage statistics.
-- Optional browser CDP / Windows UIA controllers, depending on agent capabilities.
-- Bounded activity retention without storing raw prompts, shell commands, secrets or file contents.
+**Yêu cầu:** Máy cần kết nối có [Node.js 22.12+](https://nodejs.org/en/download) và truy cập Internet. Không cần clone repository, cài plugin thủ công hay sửa file cấu hình.
 
-## Repository layout
+1. **Kết nối ChatGPT hoặc AI client:** thêm remote MCP `https://panel-rs.tail79e063.ts.net/mcp` vào ứng dụng, hoàn thành xác thực OAuth một lần. Đây là URL cho AI, **không** phải URL ghép nối thiết bị.
+2. **Mở [Karis Control](https://panel-rs.tail79e063.ts.net/dashboard):** đăng nhập quản trị, chọn **Thêm thiết bị** hoặc **Quản lý → Kết nối** trên thiết bị có sẵn.
+3. **Bấm Sao chép lệnh**, dán **nguyên lệnh** vào PowerShell/CMD (Windows) hoặc Terminal (Linux/macOS) trên máy cần kết nối. Chạy lệnh và giữ terminal mở. Khi thiết bị hiện **Trực tuyến**, bạn đã hoàn thành.
 
-| Path | Purpose |
-| --- | --- |
-| `selfhost/relay.mjs` | MCP relay and device connections |
-| `selfhost/dashboard.mjs` | Authenticated dashboard endpoints |
-| `selfhost/dashboard-view.mjs` / `dashboard.css` | Dashboard UI |
-| `selfhost/agent.mjs` | Remote device agent |
-| `selfhost/audit.mjs` | Redacted activity metadata |
-| `selfhost/test-dashboard-ui.mjs` | Browser-level dashboard regression tests |
-| `selfhost/test-multi-device.mjs` | OAuth, routing and pairing integration tests |
-| `src/` | Desktop Commander-derived MCP tooling |
-| `deploy/` | Deployment references (review before use) |
+Karis Control tự tạo **một lệnh** chứa gói agent đã đóng gói sẵn, địa chỉ server và **khóa ghép nối tạm thời**. Không phải tự tìm token, tạo file `.env` hay nhập nhiều bước. Một ví dụ minh họa (token là giá trị giả, **không chạy trực tiếp**):
 
-## Development
+```sh
+npx -y -p https://github.com/Karis-tlg/DesktopCommanderMCP/releases/download/selfhost-v0.3.4-karis.5/karis.tgz desktop-commander remote https://panel-rs.tail79e063.ts.net/pair/<YOUR_PAIRING_KEY>
+```
 
-Requires Node.js 22.12 or newer. From the repository root:
+**Windows:** dashboard tự dùng `npx.cmd` thay `npx`. Nếu máy chưa có Node.js, cài Node.js LTS trước và mở lại terminal. Chỉ chạy lệnh lấy trực tiếp từ dashboard của **bạn**; khóa có thời hạn và không nên gửi cho người khác. Nếu terminal đóng, mở lại lệnh đã lưu trong máy hoặc lấy lệnh ghép nối mới từ dashboard. Khóa vừa cấp chỉ được lưu dạng hash trên server và chỉ thay thế khóa đang dùng khi máy mới kết nối thành công.
 
-```bash
-npm ci
+**Không cần cài agent lại khi bạn chỉ muốn dùng ChatGPT trên thiết bị đã kết nối.** Chỉ cần kết nối MCP trong ứng dụng AI.
+
+### Các lệnh kiểm tra ngắn
+
+```sh
+node --version
+npx --version
+```
+
+Nếu máy hiển thị `node: command not found` hoặc phiên bản thấp hơn 22.12, hãy cài Node.js. Nếu thông báo lỗi `401` khi ghép nối, lấy lại lệnh trong dashboard và kiểm tra khóa đã hết hạn hay đã bị thu hồi. **Đừng gửi token, password, private link hoặc log chưa che thông tin nhạy cảm lên issue/chat.**
+
+## Máy chủ và đóng gói
+
+Phần trên dành cho **thiết bị client** kết nối đến máy chủ Karis đang chạy. Triển khai *máy chủ mới* yêu cầu cấu hình HTTPS, OAuth, khóa quản trị, systemd hoặc reverse proxy một lần: xem [KARIS-SELFHOST.md](KARIS-SELFHOST.md). Không triển khai relay public bằng một lệnh không có bước kiểm tra quyền.
+
+Mã nguồn:
+
+| Đường dẫn | Chức năng |
+|---|---|
+| `selfhost/relay.mjs` | MCP/OAuth relay và thiết bị |
+| `selfhost/dashboard.mjs` | Dashboard, quản trị và ghép nối |
+| `selfhost/agent.mjs` | Agent chạy trên máy tính |
+| `selfhost/controllers.mjs`, `startup.mjs` | Browser/Windows controller và tự khởi động |
+| `selfhost/audit.mjs` | Tóm tắt hoạt động đã lọc nội dung nhạy cảm |
+| `src/`, `dist/` | MCP tools (nguồn + đầu ra build) |
+
+### Phát triển và kiểm thử
+
+Cần Node.js 22.12+. Trong thư mục repository:
+
+```sh
+npm ci --ignore-scripts
 npm run build
 node selfhost/test-audit.mjs
 node selfhost/test-dashboard-ui.mjs
 node selfhost/test-multi-device.mjs
 ```
 
-The dashboard tests use an isolated relay and test credentials. Do not treat the shared VPS as a disposable development machine. Service restarts, production deployments and changes to keys or access control require explicit authorization.
+Bài test dashboard và MCP dùng relay/cổng/khóa thử nghiệm cô lập, không được trỏ vào production. Package release phải chứa `dist/index.js` và đủ `dist/selfhost/{agent,controllers,startup,windows-ui}.mjs`; kiểm tra trước khi phát hành.
 
-For service configuration and operation, refer to `KARIS-SELFHOST.md` and repository-specific `AGENTS.md`. Never commit `.env` files, pairing tokens, admin keys, production databases or private logs.
+## Git và bản quyền
 
-## Branches, remotes and upstream review
+- `origin`: [Karis-tlg/DesktopCommanderMCP](https://github.com/Karis-tlg/DesktopCommanderMCP) — **chỉ `main`** là nhánh phát triển lâu dài.
+- `upstream`: [wonderwhy-er/DesktopCommanderMCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) — **chỉ để đọc/tham khảo**, không tự merge hoặc push.
+- Khác với code độc lập, nhãn “forked from” trên giao diện GitHub là cấu hình của fork network và không ảnh hưởng tới việc sử dụng Karis.
 
-**`main` is the only permanent development branch.** Short-lived work branches, if required, should be merged and deleted after review. Releases are made explicitly from Karis Control's own repository, not from upstream release workflows.
-
-Local remotes:
-
-- `origin` — `https://github.com/Karis-tlg/DesktopCommanderMCP.git` (owned project; push here).
-- `upstream` — `https://github.com/wonderwhy-er/DesktopCommanderMCP.git` (reference-only; never push).
-
-To occasionally inspect upstream changes, without modifying local code:
-
-```bash
-git fetch upstream main
-git log --oneline main..upstream/main
-git diff --stat main..upstream/main
-```
-
-Evaluate features and security changes individually; test their impact on the self-hosted relay, dashboard and existing agents before porting them. **Do not run `git merge upstream/main` or automatically sync the fork.**
-
-The inherited `.github/workflows/release.yml` comes from the upstream project. **Do not run it for Karis Control until package publishing and MCP registry targets have been audited and configured specifically for this project.**
-
-## Origin and licensing
-
-Based on [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) by Eduards Ruzga and contributors, under the MIT license. Original copyright notices and license terms remain applicable to the derived code. Karis-specific functionality and maintenance are developed independently; this project is not an official release of upstream Desktop Commander.
-
-If GitHub displays a “forked from” label, that is a GitHub repository-network setting and does not change the independent development workflow. Detaching from that network is a separate, permanent repository-admin action, not a Git command.
+Bản phát hành Karis được tạo riêng trên GitHub, **không sử dụng pipeline xuất bản npm/MCP Registry của upstream**. Giữ các thông báo bản quyền gốc theo [LICENSE](LICENSE). Lưu khóa, DB và profile agent bên ngoài Git. Đọc [SECURITY.md](SECURITY.md) và [KARIS-SELFHOST.md](KARIS-SELFHOST.md) trước khi thay đổi quyền hoặc deploy production.

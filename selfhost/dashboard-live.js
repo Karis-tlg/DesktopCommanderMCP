@@ -89,7 +89,7 @@
         body:new URLSearchParams({_csrf:csrf})
       });
       const data = await response.json();
-      if (!response.ok || typeof data.command !== 'string' || !data.command.includes(' --token ')) throw Error(data.error || 'Không tạo được lệnh kết nối.');
+      if (!response.ok || typeof data.command !== 'string' || !data.command.includes('/pair/')) throw Error(data.error || 'Không tạo được lệnh kết nối.');
       if (!connection.isConnected) return;
       field.value = data.command;
       button.disabled = false;

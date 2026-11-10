@@ -1,24 +1,25 @@
 {
   "$schema": "../../dist/mcpb-manifest.schema.json",
   "manifest_version": "0.3",
-  "name": "desktop-commander",
-  "display_name": "Desktop Commander",
+  "name": "karis-control",
+  "display_name": "Karis Control",
   "version": "{{VERSION}}",
-  "description": "Build, explore, and automate on your local machine with access to files and terminal.",
-  "long_description": "Combine local filesystem access with full terminal control to handle technical tasks through natural language. Desktop Commander empowers you to build, explore, and automate - from organizing repositories to creating complete applications:\n* **Build from scratch** - Create features and applications with simple commands\n* **Manage development environments** - Set up servers, configure systems, and handle processes\n* **Manage context and documentation** - Keep track of project details and technical specifications\n* **Explore existing codebases and projects** - Navigate and understand complex repositories\n\nThis extension bridges technical skill gaps by providing full command-line superpowers through an interface that understands your intent and handles complexity automatically.",
+  "description": "Karis Control: independent self-hosted MCP tools and remote device management.",
+  "long_description": "Karis Control is an independently maintained, self-hosted MCP project based on MIT-licensed Desktop Commander. It connects trusted AI clients to paired Linux, Windows and macOS devices through an OAuth-protected relay, provides local file, terminal and process tools, and includes an authenticated device dashboard and redacted activity history. Private credentials are managed by the self-host operator, not an upstream hosted service.",
   "author": {
-    "name": "Desktop Commander Team",
-    "email": "er@desktopcommander.app",
-    "url": "https://desktopcommander.app/"
+    "name": "Karis-tlg",
+    "url": "https://github.com/Karis-tlg/DesktopCommanderMCP"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/wonderwhy-er/DesktopCommanderMCP.git"
+    "url": "https://github.com/Karis-tlg/DesktopCommanderMCP.git"
   },
-  "homepage": "https://github.com/wonderwhy-er/DesktopCommanderMCP",
-  "documentation": "https://github.com/wonderwhy-er/DesktopCommanderMCP/blob/main/FAQ.md",
-  "support": "https://github.com/wonderwhy-er/DesktopCommanderMCP/issues",
-  "privacy_policies": ["https://legal.desktopcommander.app/privacy_desktop_commander_mcp"],
+  "homepage": "https://github.com/Karis-tlg/DesktopCommanderMCP",
+  "documentation": "https://github.com/Karis-tlg/DesktopCommanderMCP/blob/main/README.md",
+  "support": "https://github.com/Karis-tlg/DesktopCommanderMCP/issues",
+  "privacy_policies": [
+    "https://github.com/Karis-tlg/DesktopCommanderMCP/blob/main/PRIVACY.md"
+  ],
   "icon": "icon.png",
   "server": {
     "type": "node",
@@ -138,7 +139,7 @@
   ],
   "keywords": [
     "orchestration",
-    "workflow", 
+    "workflow",
     "development",
     "prototyping",
     "terminal",

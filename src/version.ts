@@ -1,1 +1,1 @@
-export const VERSION = '0.3.4-karis.4';
+export const VERSION = '0.3.4-karis.5';

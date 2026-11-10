@@ -195,9 +195,10 @@ try {
   assert(dropdownBounds.left>=0&&dropdownBounds.right<=1440,'dropdown must stay in viewport');
   await page.waitForFunction(expected => {
     const command=document.querySelector('#device-menu-mac-one .dropdown-command')?.value || '';
-    return command.includes(expected+'/mcp --token ') && !command.includes('<KHOA_GHEP_NOI>');
+    return command.includes(expected+'/pair/') && !command.includes('<KHOA_GHEP_NOI>');
   },{timeout:5000},root);
   assert.equal((await page.$$('#device-menu-mac-one .dropdown-command')).length,1,'one command only');
+  assert((await page.$eval('#device-menu-mac-one .dropdown-command',el=>el.value)).startsWith('npx -y -p '),'macOS/Linux should receive the npx one-liner');
   assert.equal((await page.$$('#device-menu-mac-one [data-copy-target]')).length,1,'one copy action only');
   assert.equal(await page.$eval('#device-menu-mac-one .dropdown-copy-command',e=>e.disabled),false,'complete command must be ready to copy');
   assert(!(await page.content()).includes('Sao chép lệnh mẫu'),'placeholder command must not appear');
@@ -354,7 +355,7 @@ try {
   assert.equal((await page.$$('#pair-result-dialog textarea')).length,1,'new-device dialog must show exactly one complete command');
   assert((await page.$eval('#pair-result-dialog',e=>e.textContent)).includes('desktop-commander remote'),'pairing dialog must contain actual install command');
   const issuedCommand=await page.$eval('#pair-command',e=>e.value);
-  assert(issuedCommand.includes(root+'/mcp --token '),'newly issued command must contain full MCP URL and pairing credential');
+  assert(issuedCommand.includes(root+'/pair/'),'newly issued command must contain full pairing URL and credential');
   assert(!issuedCommand.includes('<KHOA_GHEP_NOI>'),'new device command must be directly runnable');
   await page.keyboard.press('Escape');
   await page.reload({waitUntil:'domcontentloaded'});
@@ -381,7 +382,7 @@ try {
   assert(confirmedRotate.location?.includes('&pair='),'rotation should reveal a copy-ready command');
   await page.goto(new URL(confirmedRotate.location,root).href,{waitUntil:'domcontentloaded'});
   assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'new key must be displayed after confirmed rotation');
-  assert((await page.$eval('#pair-command',el=>el.value)).includes(root+'/mcp --token '),'new pairing command must be complete');
+  assert((await page.$eval('#pair-command',el=>el.value)).includes(root+'/pair/'),'new pairing command must be complete');
   assert.equal(errors.length,0,'browser errors: '+errors.join(';'));
   console.log('PASS: '+(3+additionalDevices)+' devices, '+activityEntries+' paged activities, safe pairing and key rotation, readable dialogs, live status, CSP/CSRF, SSE and responsive UI');
   console.log(JSON.stringify({desktop,mobile,screenshots:['karis-dashboard-login.png','karis-dashboard-desktop.png','karis-dashboard-mobile.png']}));

@@ -11,6 +11,12 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
   const sessions = new Map();
   const secure = issuer.protocol === 'https:' ? '; Secure' : '';
   const cookieName = 'karis_admin';
+  // A one-paste connection command. The short-lived token is carried in the
+  // pairing URL; it is never stored in plaintext in the relay database.
+  const pairingCommand = (token, platform = '') => {
+    const cli = /^win(?:32|64|dows)?$/i.test(String(platform)) ? 'npx.cmd' : 'npx';
+    return cli + ' -y -p ' + agentPackageUrl + ' desktop-commander remote ' + issuer.origin + '/pair/' + token;
+  };
 
   function cookies(req) {
     const result = {};
@@ -63,7 +69,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     });
     const pendingLinks = session.pendingLinks.map(p => {
       const url = issuer.origin + '/pair/' + p.token;
-      const command = 'npx --yes --package=' + agentPackageUrl + ' desktop-commander remote --endpoint ' + issuer.origin + '/mcp --token ' + p.token + ' --name ' + p.alias;
+      const command = pairingCommand(p.token, db.devices[p.deviceId]?.platform);
       return { ...p, url, command };
     });
     const list = deviceList().map(d => {
@@ -233,8 +239,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
       issuePair(found,record,token);
       save();
     }
-    const command = 'npx --yes --package=' + agentPackageUrl +
-      ' desktop-commander remote --endpoint ' + issuer.origin + '/mcp --token ' + token + ' --name ' + record.alias;
+    const command = pairingCommand(token, record.platform);
     res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}).json({command,expiresAt:record.pendingPairExpires || now()+600});
   });
   app.post('/dashboard/devices/:id/rotate', (req, res) => {

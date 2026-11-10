@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.wonderwhy-er/desktop-commander",
-  "title": "Desktop Commander",
+  "name": "io.github.karis-tlg/desktop-commander",
+  "title": "Karis Control",
   "description": "MCP server for terminal commands, file operations, and process management",
   "repository": {
-    "url": "https://github.com/wonderwhy-er/DesktopCommanderMCP",
+    "url": "https://github.com/Karis-tlg/DesktopCommanderMCP",
     "source": "github"
   },
-  "version": "0.3.4-karis.4",
+  "version": "0.3.4-karis.5",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "@wonderwhy-er/desktop-commander",
-      "version": "0.3.4-karis.4",
+      "identifier": "@karis-tlg/desktop-commander",
+      "version": "0.3.4-karis.5",
       "transport": {
         "type": "stdio"
       }
