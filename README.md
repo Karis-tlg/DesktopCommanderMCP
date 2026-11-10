@@ -33,7 +33,13 @@ Nếu máy hiển thị `node: command not found` hoặc phiên bản thấp hơ
 
 ## Máy chủ và đóng gói
 
-Phần trên dành cho **thiết bị client** kết nối đến máy chủ Karis đang chạy. Triển khai *máy chủ mới* yêu cầu cấu hình HTTPS, OAuth, khóa quản trị, systemd hoặc reverse proxy một lần: xem [KARIS-SELFHOST.md](KARIS-SELFHOST.md). Không triển khai relay public bằng một lệnh không có bước kiểm tra quyền.
+Phần trên dành cho **thiết bị client** kết nối đến host Karis đang chạy. Với **VPS Linux mới**, bộ cài Panel + MCP Host + Agent đã được gộp thành một lệnh (cần Node.js 22.12+, Git, sudo và Tailscale đã đăng nhập):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Karis-tlg/DesktopCommanderMCP/main/deploy/install-host.sh) --tailscale
+```
+
+Nếu đã có domain/reverse proxy HTTPS, thay `--tailscale` bằng `--url https://mcp.example.com`. Installer tự tạo khóa, file cấu hình, service và kiểm tra sức khỏe; không ghi đè dịch vụ có sẵn. Xem [hướng dẫn cài host](deploy/README.md) và [vận hành](KARIS-SELFHOST.md). Bạn nên xem nội dung script trước khi cấp quyền sudo.
 
 Mã nguồn:
 

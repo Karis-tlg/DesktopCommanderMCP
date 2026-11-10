@@ -13,16 +13,27 @@
 
 Đây là cấu hình đang dùng trên VPS mẫu, **không mặc định phù hợp với máy chủ mới**.
 
-## Thiết lập server mới (làm một lần)
+## Thiết lập server mới (tự động hóa)
 
-Yêu cầu: VPS Linux có Node.js 22.12+, HTTPS domain bạn kiểm soát, quyền cài service, và bộ khóa được tạo bảo mật.
+Yêu cầu VPS Linux có Node.js 22.12+, npm, Git, Bash, sudo; chọn một trong hai cách HTTPS.
 
-1. Clone repository `Karis-tlg/DesktopCommanderMCP` vào thư mục dự án của bạn. `npm ci --ignore-scripts && npm run build`.
-2. Tạo các file owner-only chứa khóa ngẫu nhiên mạnh và URL công khai HTTPS trong cấu hình môi trường. Xem `deploy/systemd/` và `selfhost/relay.mjs` để xác định các biến `KARIS_DB_FILE`, `KARIS_ADMIN_FILE`, `KARIS_AGENT_FILE`, `KARIS_LINK_KEY_FILE`, `KARIS_PUBLIC_URL`. **Không copy khóa từ máy chủ khác.**
-3. Cấu hình reverse proxy/TLS vào relay loopback, sau đó cấu hình systemd chỉ cho đúng hai service Karis. Xác minh trạng thái và OAuth. Không expose port relay trực tiếp ra Internet.
-4. Mở dashboard, đăng nhập quản trị và tạo thiết bị. Gói agent công khai theo release riêng Karis; biến `KARIS_AGENT_PACKAGE_URL` phải trỏ tới **bản release có đầy đủ agent, controller và startup modules**.
+**Nhanh nhất với Tailscale đã đăng nhập và bật Funnel:**
 
-Không thể thu gọn triển khai máy chủ công khai thành một lệnh an toàn mà không xử lý khóa và quyền mạng. Sau lần thiết lập server ban đầu, **mỗi thiết bị mới chỉ cần một lệnh từ dashboard**.
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Karis-tlg/DesktopCommanderMCP/main/deploy/install-host.sh) --tailscale
+```
+
+**Nếu đã có domain/reverse proxy HTTPS:**
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Karis-tlg/DesktopCommanderMCP/main/deploy/install-host.sh) --url https://mcp.example.com
+```
+
+Installer tạo các khóa ngẫu nhiên, cấu hình relay/agent, service systemd, build source, kiểm tra sức khỏe và in URL panel/MCP. Nó từ chối cài đè dịch vụ Karis/Tailscale hiện có. Mật khẩu quản trị chỉ được lưu ở file owner-only và hiện trong terminal tương tác, không đưa vào log. Với domain riêng, **bạn phải cấu hình TLS và reverse proxy trước** — installer không tự thay Nginx/Caddy.
+
+Sau cài dùng `$HOME/.local/bin/karis status`, `doctor`, `update --yes` hoặc `rollback --yes`. Hướng dẫn đầy đủ, preflight/dry-run và giới hạn an toàn: **[deploy/README.md](deploy/README.md)**.
+
+Đây là quy trình **cho VPS mới**. VPS hiện tại đã có service Karis chạy theo đường dẫn riêng; không dùng installer mới để ghi đè/migrate trực tiếp. Sau lần cài server, kết nối mỗi thiết bị mới bằng một lệnh từ dashboard.
 
 ## Kiểm tra và khởi động lại khi được phép
 
