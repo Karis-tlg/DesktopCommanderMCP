@@ -63,12 +63,16 @@ function deviceRow(d) {
     '<div class="device-side"><div class="tool-count"><strong>' + fmt(d.toolCount) + '</strong><small>Công cụ</small></div>' + manage + '</div>' +
     '<div class="device-meta" style="grid-column:1/-1;padding-left:56px;margin-top:-7px">Hoạt động: ' + esc(clock(d.lastSeen)) + '</div></article>';
 }
-function activityRow(a) {
-  const ok = a.status === 'ok' || a.status === 'success';
-  const duration = Number.isFinite(Number(a.durationMs)) ? fmt(a.durationMs) + ' ms' : '—';
-  return '<li class="activity-row"><div><div class="activity-name">' + esc(a.tool || 'Tác vụ') + '</div><div class="activity-meta">' + esc(a.device || 'dịch vụ') + ' · ' + (ok ? 'Thành công' : esc(a.status || 'Không rõ')) +
-    (a.error ? ' · ' + esc(a.error) : '') + '</div></div><span class="activity-time">' + duration + '</span></li>';
-}
+const isActivityOk = a => a.status === 'ok' || a.status === 'success';
+const activityClock = at => {
+  const date = new Date(at);
+  if (!at || Number.isNaN(date.valueOf())) return { iso:'', label:'Không rõ thời điểm' };
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',year:'numeric',
+    hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
+  }).formatToParts(date).filter(p => p.type !== 'literal').map(p => [p.type,p.value]));
+  return {iso:date.toISOString(),label:parts.day+'/'+parts.month+'/'+parts.year+' '+parts.hour+':'+parts.minute+':'+parts.second};
+};
 function clientRow(c) {
   const clientId = String(c.client_id || '');
   return '<li class="client-row"><div><strong>' + esc(c.client_name || 'MCP client') +
@@ -78,7 +82,7 @@ function clientRow(c) {
 }
 
 
-export function renderConsoleView({ list, clients, awaitingClients = [], activities, usageTotal, maxDevices, endpoint, agentPackageUrl, pendingLinks = [], pendingLink = null, message, csrfToken, activityPage = 1, view = 'overview' }) {
+export function renderConsoleView({ list, clients, awaitingClients = [], activities, usageTotal, maxDevices, endpoint, agentPackageUrl, pendingLinks = [], pendingLink = null, message, csrfToken, activityPage = 1, activityStatus = '', activityDevice = '', view = 'overview' }) {
   const online = list.filter(d => d.online).length;
   const valid = ['overview','activity','clients','security','devices','connection'];
   const current = valid.includes(view) ? view : 'overview';
@@ -96,14 +100,11 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
     const enabled = info?.enabled === true;
     const managed = info?.managed === true || d.protected;
     const label = !supported ? 'Chưa hỗ trợ' : enabled ? 'Đang bật' : 'Đang tắt';
-    const help = managed ? '<p>Service trên VPS được quản lý bằng systemd. Không thay đổi từ dashboard.</p>' :
-      info?.mode === 'login' ? '<p>Agent sẽ tự chạy khi đăng nhập vào máy, không cần mở bằng tay. Máy phải được bật và người dùng đăng nhập.</p>' :
-      '<p>Chỉ hỗ trợ agent đã cập nhật và hệ điều hành có trình quản lý khởi động.</p>';
+    const help = !supported ? '<p>Chưa hỗ trợ trên thiết bị này.</p>' : '';
+    if (managed) return '<div class="dropdown-static-line"><span>Khởi động cùng máy</span><strong>' + (enabled ? 'Đang bật' : 'Đang tắt') + '</strong></div>';
     let action = '';
     if (!supported) {
       action = '<p>' + esc(d.online ? 'Agent chưa hỗ trợ. Cập nhật agent trên thiết bị để sử dụng.' : 'Thiết bị ngoại tuyến hoặc agent chưa hỗ trợ.') + '</p>';
-    } else if (managed) {
-      action = '<p>' + (enabled ? 'Đã bật tự khởi động qua systemd.' : 'Chưa bật service tự khởi động.') + '</p>';
     } else if (!d.online) {
       action = '<p>Thiết bị đang ngoại tuyến. Hãy kết nối lại trước khi thay đổi.</p>';
     } else {
@@ -117,25 +118,25 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
   const deviceDropdown = (d, quick = false) => {
     const id = encodeURIComponent(d.id), path = '/dashboard/devices/' + id;
     const suffix = (quick ? 'quick-' : '') + id;
-    const endpointId = 'device-endpoint-' + suffix;
-    const command = 'npx --yes --package=' + agentPackageUrl + ' desktop-commander remote --endpoint <LINK_GHEP_NOI> --name ' + d.alias;
+    const commandId = 'device-command-' + suffix;
     return '<div id="device-menu-' + suffix + '" class="device-dropdown-panel" popover="auto" data-device-popover>' +
       '<strong class="device-dropdown-title">' + esc(d.displayName || d.alias) + '</strong>' +
       (d.isDefault ? '<span class="device-dropdown-default">' + ico('shield') + ' Máy mặc định</span>' :
         postForm(path + '/default', '<button type="submit" class="dropdown-action">Đặt làm mặc định</button>')) +
       startupControls(d) +
-      '<details class="dropdown-disclosure"><summary>Xem kết nối ' + ico('chevron') + '</summary>' +
-      '<div class="dropdown-disclosure-body"><label for="' + esc(endpointId) + '">MCP endpoint</label><div class="dropdown-copy">' +
-      '<input id="' + esc(endpointId) + '" readonly value="' + esc(endpoint) + '">' +
-      '<button type="button" data-copy-target="' + esc(endpointId) + '">Sao chép</button></div>' +
-      '<span class="dropdown-label">Mẫu lệnh thiết bị</span><code class="dropdown-command">' + esc(command) + '</code>' +
-      '<p>Khóa đang sử dụng không thể xem lại. Không cấp lại khóa nếu máy vẫn kết nối tốt.</p></div></details>' +
+      '<div class="dropdown-connection"' + (d.protected ? '' : ' data-pair-device="' + esc(d.id) + '"') + '>' +
+      '<label class="dropdown-connection-title" for="' + esc(commandId) + '">Kết nối</label>' +
+      '<textarea id="' + esc(commandId) + '" class="dropdown-command" rows="4" readonly ' +
+      (d.protected ? '>sudo systemctl start karis-mcp-agent.service</textarea>' : 'placeholder="Đang tải lệnh…" ></textarea>') +
+      '<button type="button" class="dropdown-copy-command" data-copy-target="' + esc(commandId) + '"' +
+      (d.protected ? '' : ' disabled') + '>Sao chép lệnh</button>' +
+      '<span class="pair-command-status" role="status" aria-live="polite" hidden></span></div>' +
       '<details class="dropdown-disclosure"><summary>Ghép nối lại ' + ico('chevron') + '</summary>' +
-      '<div class="dropdown-disclosure-body"><p>Cấp lại khóa sẽ ngắt kết nối hiện tại.</p>' +
+      '<div class="dropdown-disclosure-body">' +
       postForm(path + '/rotate', '<label class="confirm-label"><input type="checkbox" name="confirm" value="rotate" required> Tôi xác nhận thay khóa kết nối</label>' +
       '<button type="submit" class="dropdown-danger">Cấp lại khóa</button>') + '</div></details>' +
       '<details class="dropdown-disclosure danger-disclosure"><summary>Thu hồi quyền ' + ico('chevron') + '</summary>' +
-      '<div class="dropdown-disclosure-body"><p>Thiết bị sẽ không thể sử dụng khóa hiện tại.</p>' +
+      '<div class="dropdown-disclosure-body">' +
       postForm(path + '/revoke', '<label class="confirm-label"><input type="checkbox" required> Tôi xác nhận thu hồi</label>' +
       '<button type="submit" class="dropdown-danger">Thu hồi thiết bị</button>') + '</div></details></div>';
   };
@@ -150,11 +151,23 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
   };
   const devicePreview = list.slice(0,4).map(d => deviceTile(d)).join('') || '<div class="empty">Chưa có thiết bị. Thêm thiết bị để bắt đầu.</div>';
   const allDevices = list.map(d => deviceTile(d,true)).join('') || '<div class="empty">Chưa có thiết bị nào.</div>';
-  const activitiesRows = rows => (rows.length ? rows.map(a => {
-    const ok = a.status === 'ok' || a.status === 'success';
-    const ms = Number.isFinite(Number(a.durationMs)) ? fmt(a.durationMs) + ' ms' : '—';
-    return '<li class="activity-row"><span class="activity-symbol">' + ico(ok?'activity':'shield') + '</span><span class="activity-copy"><strong>' + esc(a.tool || 'Tác vụ') + '</strong><small>' + esc(a.device || 'relay') + ' · ' + (ok?'Thành công':esc(a.status || 'Lỗi')) + '</small></span><time>' + esc(ms) + '</time></li>';
-  }).join('') : '<li class="empty">Chưa có hoạt động gần đây.</li>');
+  const activitiesRows = (rows, detailed = false) => (rows.length ? rows.map(a => {
+    const ok = isActivityOk(a);
+    const at = activityClock(a.at);
+    const duration = Number.isFinite(Number(a.durationMs)) && Number(a.durationMs) >= 0 ? fmt(a.durationMs) + ' ms' : '—';
+    const info = detailed ? '<details class="activity-audit"><summary>Chi tiết</summary>' +
+      '<dl><div><dt>Ứng dụng</dt><dd>' + esc(a.client || 'Không xác định (log cũ)') + '</dd></div>' +
+      '<div><dt>Thao tác</dt><dd>' + esc(a.requestSummary || 'Log cũ: chỉ có thông tin công cụ và thiết bị') + '</dd></div>' +
+      '<div><dt>Kết quả</dt><dd>' + esc(a.responseSummary || 'Không lưu nội dung phản hồi') + '</dd></div>' +
+      (!ok ? '<div><dt>Lỗi</dt><dd>' + (a.requestSummary ? esc(a.error || 'Chi tiết lỗi đã ẩn') : 'Chi tiết lỗi cũ được ẩn để bảo vệ dữ liệu') + '</dd></div>' : '') +
+      '</dl></details>' : '';
+    return '<li class="activity-row' + (ok ? '' : ' has-error') + '">' +
+      '<span class="activity-symbol">' + ico(ok?'activity':'shield') + '</span>' +
+      '<div class="activity-copy"><strong>' + esc(a.tool || 'Tác vụ') + '</strong>' +
+      '<small class="activity-meta">' + esc(a.device || 'relay') + ' · ' + (ok?'Thành công':'Thất bại') + ' · ' +
+      '<time' + (at.iso ? ' datetime="' + esc(at.iso) + '"' : '') + '>' + esc(at.label) + '</time></small>' +
+      info + '</div><span class="activity-duration">' + esc(duration) + '</span></li>';
+  }).join('') : '<li class="empty">Không có hoạt động khớp bộ lọc.</li>');
   const clientsRows = clients.length ? clients.map(c => {
     const id=String(c.client_id || '');
     return '<li class="client-row"><span class="client-icon">' + ico('link') + '</span><div><strong>' + esc(c.client_name || 'Ứng dụng MCP') + '</strong>' + (c.lastMcpAt ? '<small>Kết nối lần cuối ' + esc(new Date(c.lastMcpAt*1000).toLocaleString('vi-VN')) + '</small>' : '') + '</div><details><summary class="button subtle">Thu hồi</summary>' + '<code class="client-technical-id">ID ' + esc(id) + '</code>' +
@@ -171,16 +184,13 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
       '<label for="device-alias">Tên ngắn (không bắt buộc)<input id="device-alias" name="alias" maxlength="24" placeholder="pc_lam_viec" pattern="[A-Za-z0-9_-]*"></label>' +
       '<div class="dialog-footer"><button type="button" class="button subtle" data-close-dialog>Hủy</button><button type="submit" class="button primary">' + ico('plus') + ' Thêm thiết bị</button></div>', 'pair-form');
   const issued = pendingLink ? modal('pair-result-dialog','Ghép nối · ' + esc(pendingLink.displayName),
-    '<p class="dialog-lead">Sao chép lệnh dưới đây và chạy trên máy cần kết nối. Liên kết này chỉ mở lại được trong phiên quản trị hiện tại, tối đa 10 phút sau khi tạo.</p>' +
-    '<label class="copy-label" for="pair-link">Liên kết ghép nối riêng</label><div class="secret-copy"><textarea id="pair-link" class="copy-field" rows="2" readonly>' + esc(pendingLink.url) + '</textarea><button type="button" class="button subtle" data-copy-target="pair-link">Sao chép</button></div>' +
-    '<label class="copy-label" for="pair-command">Lệnh chạy trên thiết bị</label><div class="secret-copy"><textarea id="pair-command" class="copy-field" rows="3" readonly>' + esc(pendingLink.command) + '</textarea><button type="button" class="button subtle" data-copy-target="pair-command">Sao chép</button></div>' +
-    '<p class="pair-warning">Không chia sẻ liên kết này. Sau 10 phút, dashboard không còn hiển thị lại khóa cũ; thiết bị đã ghép nối vẫn hoạt động bình thường.</p>' +
-    '<div class="dialog-footer"><button type="button" class="button primary" data-close-dialog>Đã hiểu</button></div>',true,' data-auto-open') : '';
+    '<label class="copy-label" for="pair-command">Lệnh kết nối</label><div class="secret-copy"><textarea id="pair-command" class="copy-field" rows="4" readonly>' + esc(pendingLink.command) + '</textarea><button type="button" class="button primary" data-copy-target="pair-command">Sao chép lệnh</button></div>' +
+    '<div class="dialog-footer"><button type="button" class="button subtle" data-close-dialog>Đóng</button></div>',true,' data-auto-open') : '';
   const sidebar = '<aside class="sidebar">' + brand() + '<nav aria-label="Điều hướng chính"><div class="nav">' +
     nav.map(([id,ic,label]) => '<a href="/dashboard?view=' + id + '" data-page-nav="' + id + '"' + ((id===current || (['devices','connection'].includes(current)&&id==='overview'))?' class="active" aria-current="page"':'') + '>' + ico(ic) + '<span>' + label + '</span></a>').join('') +
-    '</div></nav></aside>';
-  const top = '<header class="topbar"><strong class="topbar-heading">Karis Control</strong><div class="topbar-right"><span id="live-health" class="health-state" role="status" aria-live="polite"><span class="status-dot"></span><span>Đang kết nối</span></span>' +
-    postForm('/dashboard/logout','<button class="button subtle signout" type="submit">' + ico('logout') + '<span>Đăng xuất</span></button>') + '</div></header>';
+    '</div></nav><div class="sidebar-footer">' +
+    postForm('/dashboard/logout','<button class="button subtle signout" type="submit">' + ico('logout') + '<span>Đăng xuất</span></button>','sidebar-logout') +
+    '<span id="live-health" class="health-state sr-only" role="status" aria-live="polite">Đang kết nối</span></div></aside>';
   const metrics = '<div class="metrics" data-live-region="metrics">' +
     [['Trực tuyến',online,'monitor'],['Thiết bị',list.length,'server'],['Lượt gọi',usageTotal,'activity']].map(([name,n,ic]) =>
       '<div class="metric"><span>' + ico(ic) + esc(name) + '</span><strong>' + fmt(n) + '</strong></div>').join('') + '</div>';
@@ -193,21 +203,40 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
     '<section class="panel recent-panel"><div class="panel-head"><h2>Hoạt động gần đây</h2><a class="button text-action" href="/dashboard?view=activity">Xem chi tiết ' + ico('arrow') + '</a></div>' +
     '<ul class="activity-list" data-live-region="recent-activities">' + activitiesRows(activities.slice(0,4)) + '</ul></section></section>';
   const viewPage = (key,title,body) => '<section class="console-view" data-view="' + key + '"><div class="page-head"><h1>' + title + '</h1></div>' + body + '</section>';
-  const pageSize = 20, totalPages = Math.max(1, Math.ceil(activities.length / pageSize));
+  const selectedStatus = ['ok','error'].includes(activityStatus) ? activityStatus : '';
+  const deviceNames = [...new Set(activities.map(a => String(a.device || 'relay')))].sort((a,b)=>a.localeCompare(b));
+  const selectedDevice = deviceNames.includes(activityDevice) ? activityDevice : '';
+  const filteredActivities = activities.filter(a =>
+    (!selectedStatus || (selectedStatus === 'ok' ? isActivityOk(a) : !isActivityOk(a))) &&
+    (!selectedDevice || String(a.device || 'relay') === selectedDevice));
+  const filterUrl = (status = selectedStatus, device = selectedDevice, p = 1) =>
+    '/dashboard?view=activity' + (status ? '&amp;status=' + encodeURIComponent(status) : '') +
+    (device ? '&amp;device=' + encodeURIComponent(device) : '') + (p > 1 ? '&amp;page=' + p : '');
+  const pageSize = 20, totalPages = Math.max(1, Math.ceil(filteredActivities.length / pageSize));
   const requestedPage = Number(activityPage);
   const currentPage = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, totalPages) : 1;
   const start = (currentPage - 1) * pageSize;
-  const pageUrl = p => '/dashboard?view=activity&amp;page=' + p;
+  const pageUrl = p => filterUrl(selectedStatus,selectedDevice,p);
   const around = [...new Set([1,currentPage-1,currentPage,currentPage+1,totalPages].filter(p => p >= 1 && p <= totalPages))].sort((a,b) => a-b);
   const pagination = '<nav class="activity-pagination" aria-label="Phân trang hoạt động" data-live-region="activity-pagination">' +
-    '<span class="pagination-summary">' + (activities.length ? fmt(start+1) + '–' + fmt(Math.min(start+pageSize,activities.length)) + ' / ' + fmt(activities.length) + ' hoạt động' : 'Chưa có hoạt động') + '</span>' +
+    '<span class="pagination-summary">' + (filteredActivities.length ? fmt(start+1) + '–' + fmt(Math.min(start+pageSize,filteredActivities.length)) + ' / ' + fmt(filteredActivities.length) + ' hoạt động' : 'Không tìm thấy hoạt động') + '</span>' +
     '<div class="pagination-actions">' +
     (currentPage > 1 ? '<a class="button subtle" href="' + pageUrl(currentPage-1) + '" rel="prev">Trước</a>' : '<span class="button subtle disabled" aria-disabled="true">Trước</span>') +
     around.map((p,i) => (i && p > around[i-1]+1 ? '<span class="page-gap">…</span>' : '') +
       '<a class="page-index' + (p===currentPage ? ' active' : '') + '" href="' + pageUrl(p) + '"' + (p===currentPage ? ' aria-current="page"' : '') + ' aria-label="Trang ' + p + '">' + p + '</a>').join('') +
     (currentPage < totalPages ? '<a class="button subtle" href="' + pageUrl(currentPage+1) + '" rel="next">Sau</a>' : '<span class="button subtle disabled" aria-disabled="true">Sau</span>') +
     '</div></nav>';
-  const activityPageView = viewPage('activity','Hoạt động','<div class="panel"><div class="panel-head"><h2>Lịch sử</h2></div><ul class="activity-list" data-live-region="activity-list">' + activitiesRows(activities.slice(start,start+pageSize)) + '</ul>' + pagination + '</div>');
+
+  const activityTabs = [['','Tất cả'],['ok','Thành công'],['error','Thất bại']].map(([status,label]) =>
+    '<a href="' + filterUrl(status,selectedDevice) + '"' + (selectedStatus === status ? ' class="active" aria-current="true"' : '') + '>' + label + '</a>').join('');
+  const deviceOptions = '<option value="">Tất cả thiết bị</option>' + deviceNames.map(name =>
+    '<option value="' + esc(name) + '"' + (selectedDevice === name ? ' selected' : '') + '>' + esc(name) + '</option>').join('');
+  const activityToolbar = '<div class="activity-toolbar" data-live-region="activity-toolbar">' +
+    '<nav class="activity-tabs" aria-label="Lọc trạng thái">' + activityTabs + '</nav>' +
+    '<label for="activity-device-filter">Thiết bị<select id="activity-device-filter" data-activity-device-filter>' + deviceOptions + '</select></label></div>';
+  const activityPageView = viewPage('activity','Hoạt động',activityToolbar +
+    '<div class="panel activity-panel"><div class="panel-head"><h2>Lịch sử</h2></div>' +
+    '<ul class="activity-list" data-live-region="activity-list">' + activitiesRows(filteredActivities.slice(start,start+pageSize),true) + '</ul>' + pagination + '</div>');
   const clientsPage = viewPage('clients','Quyền truy cập',
     '<div class="panel"><div class="panel-head"><h2>Ứng dụng đã kết nối</h2></div><ul class="client-list" data-live-region="client-list">' + clientsRows + '</ul></div>' +
     (awaitingClients.length ? '<div class="panel"><div class="panel-head"><h2>Chờ kết nối ('+fmt(awaitingClients.length)+')</h2></div><ul class="client-list">' + awaitingRows + '</ul></div>' : ''));
@@ -222,7 +251,7 @@ export function renderConsoleView({ list, clients, awaitingClients = [], activit
       '<div class="device-filter-bar"><label for="device-filter">Tìm thiết bị<input type="search" id="device-filter" placeholder="Tên, alias, hệ điều hành" autocomplete="off"></label><span id="device-filter-count" role="status" aria-live="polite">' + fmt(list.length) + ' thiết bị</span></div>' +
       '<div class="dialog-list" data-live-region="modal-device-list">' + allDevices + '</div>' +
       '<p id="device-filter-empty" class="empty" hidden>Không tìm thấy thiết bị phù hợp.</p>',true) + issued;
-  const content = '<div class="app-shell">' + sidebar + '<div class="main-wrap">' + top + '<main class="workspace">' +
+  const content = '<div class="app-shell">' + sidebar + '<div class="main-wrap"><main class="workspace">' +
     (message?'<div class="notice" role="status">'+esc(message)+'</div>':'') + views[current] +
     '</main></div></div>' + dialogs + '<span id="copy-status" class="sr-only" role="status" aria-live="polite"></span>' +
     '<script src="/dashboard/ui.js" defer></script>';

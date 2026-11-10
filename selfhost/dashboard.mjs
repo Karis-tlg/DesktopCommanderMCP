@@ -58,11 +58,12 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     // Persistent DB stores hashes only; never silently rotate a connected device.
     session.pendingLinks = (session.pendingLinks || []).filter(p => {
       const d = db.devices[p.deviceId];
-      return p.expiresAt > Date.now() && d && !d.revokedAt && d.tokenHash === digest(p.token);
+      return p.expiresAt > Date.now() && d && !d.revokedAt &&
+        (d.tokenHash === digest(p.token) || (d.pendingPairHash === digest(p.token) && d.pendingPairExpires > now()));
     });
     const pendingLinks = session.pendingLinks.map(p => {
       const url = issuer.origin + '/pair/' + p.token;
-      const command = 'npx --yes --package=' + agentPackageUrl + ' desktop-commander remote --endpoint ' + url + ' --name ' + p.alias;
+      const command = 'npx --yes --package=' + agentPackageUrl + ' desktop-commander remote --endpoint ' + issuer.origin + '/mcp --token ' + p.token + ' --name ' + p.alias;
       return { ...p, url, command };
     });
     const list = deviceList().map(d => {
@@ -84,7 +85,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
       pendingLinks: pendingLinks.map(p => ({ deviceId:p.deviceId, displayName:p.displayName })),
       pendingLink: pendingLinks.find(p => p.deviceId === String(req.query?.pair || '')) || null,
       message, csrfToken: session.csrfToken,
-      activityPage: req.query?.page,
+      activityPage: req.query?.page, activityStatus: req.query?.status, activityDevice: req.query?.device,
       view: req.query?.view || (req.path.includes('revoke-all') ? 'security' : req.path.includes('/devices') ? 'devices' : req.path.includes('/clients') ? 'clients' : 'overview')
     });
     res.status(200).type('html').send(html);
@@ -160,7 +161,7 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
         }),
         calls: Number(db.usage?.totalCalls) || 0,
         clients: Object.values(db.clients || {}).map(c=>[c.client_id,c.approvedAt||0,c.verifiedAt||0,c.lastMcpAt||0]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),
-        recent: (db.activity || []).slice(0, 20).map(a => [a.tool, a.device, a.status, a.durationMs, a.at])
+        recent: (db.activity || []).slice(0, 20).map(a => [a.tool, a.device, a.status, a.durationMs, a.at, a.error || '', a.client || '', a.requestSummary || '', a.responseSummary || ''])
       });
       const revision = digest(state).slice(0, 20);
       if (revision !== prior) {
@@ -213,13 +214,36 @@ export function registerDashboard({ app, db, save, adminKey, issuer, devices, on
     createPair(record, found);
     res.redirect(303, '/dashboard?view=overview&pair=' + encodeURIComponent(record.id));
   });
+  // A single copy-ready command without weakening device authentication.
+  // The pending credential is hashed, expires after ten minutes and only
+  // replaces the active key after a successful agent registration.
+  app.post('/dashboard/devices/:id/pair-command', (req, res) => {
+    const found = requireSession(req, res); if (!found) return;
+    const record = db.devices[req.params.id];
+    if (!record || record.revokedAt) { res.status(404).json({error:'Thiết bị không tồn tại.'}); return; }
+    if (record.protected) { res.status(403).json({error:'Thiết bị quản trị VPS cần ghép nối qua systemd.'}); return; }
+    const previous = (found.session.pendingLinks || []).find(p =>
+      p.deviceId === record.id && p.expiresAt > Date.now() &&
+      (record.tokenHash === digest(p.token) || (record.pendingPairHash === digest(p.token) && record.pendingPairExpires > now())));
+    let token = previous?.token;
+    if (!token) {
+      token = random();
+      record.pendingPairHash = digest(token);
+      record.pendingPairExpires = now() + 600;
+      issuePair(found,record,token);
+      save();
+    }
+    const command = 'npx --yes --package=' + agentPackageUrl +
+      ' desktop-commander remote --endpoint ' + issuer.origin + '/mcp --token ' + token + ' --name ' + record.alias;
+    res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}).json({command,expiresAt:record.pendingPairExpires || now()+600});
+  });
   app.post('/dashboard/devices/:id/rotate', (req, res) => {
     const found = requireSession(req, res); if (!found) return;
     const record = db.devices[req.params.id];
     if (!record || record.revokedAt) { render(req, res, 'Unknown or revoked device.'); return; }
     if (req.body?.confirm !== 'rotate') { res.status(400).type('text').send('Explicit confirmation required to replace device key.'); return; }
     const live = devices.get(record.id); if (live) live.ws.close(4001, 'Pairing key rotated');
-    const token = random(); record.tokenHash = digest(token); record.revokedAt = null; record.updatedAt = now();
+    const token = random(); record.tokenHash = digest(token); delete record.pendingPairHash; delete record.pendingPairExpires; record.revokedAt = null; record.updatedAt = now();
     issuePair(found, record, token); save(); onChange(); res.redirect(303, '/dashboard?view=overview&pair=' + encodeURIComponent(record.id));
   });
   app.post('/dashboard/devices/:id/revoke', (req, res) => {

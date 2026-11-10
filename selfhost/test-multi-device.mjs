@@ -100,8 +100,8 @@ async function addDevice(displayName, alias, simulateProxyHost = false) {
   const page = await fetch(new URL(pairingLocation,root), { headers: { Cookie: cookie } });
   assert.equal(page.status, 200);
   const html = await page.text();
-  const match = html.match(/\/pair\/([A-Za-z0-9_-]{40,})/);
-  assert(match, 'dashboard should show one-time pairing link');
+  const match = html.match(/--token ([A-Za-z0-9_-]{40,}) --name /);
+  assert(match, 'dashboard should show a single complete pairing command');
   return match[1];
 }
 async function mockAgent(token, label) {
@@ -384,9 +384,13 @@ try {
   assert(!ping.isError, JSON.stringify(ping));
   assert(ping.content[0].text.includes('"responsive": true'));
 
+  const privateResult = await client.callTool({ name: 'probe', arguments: { target_device: 'macbook', value: 'PRIVATE_MCP_PAYLOAD_123' } });
+  assert(privateResult.content[0].text.includes('PRIVATE_MCP_PAYLOAD_123'));
   const activity = await client.callTool({ name: 'get_recent_tool_activity', arguments: { limit: 10 } });
   const recent = JSON.parse(activity.content[0].text);
   assert(recent.some(a => a.tool === 'probe' && a.device === 'macbook'));
+  assert(recent.some(a => a.tool === 'probe' && a.requestSummary && a.responseSummary && a.client === 'Karis multi-device E2E'));
+  assert(!JSON.stringify(recent).includes('PRIVATE_MCP_PAYLOAD_123'),'audit must not store tool arguments or response bodies');
   assert(recent.some(a => a.tool === 'ping_device' && a.device === 'pc_two'));
   const usage = await client.callTool({ name: 'get_usage_statistics', arguments: {} });
   const stats = JSON.parse(usage.content[0].text);
@@ -397,6 +401,50 @@ try {
   assert(dashboardAfterCalls.includes('probe'));
   const overviewAfterCalls = await (await fetch(root + '/dashboard?view=overview', { headers: { Cookie: cookie } })).text();
   assert(overviewAfterCalls.includes('Hoạt động gần đây'));
+
+  // Opening a one-command pairing URL must not invalidate an online agent.
+  // Only a successfully authenticated replacement registration promotes the key.
+  const rePairId = deviceList.find(d => d.alias === 'pc_one').id;
+  const beforePair = JSON.parse(fs.readFileSync(path.join(testDir,'oauth.json'),'utf8')).devices[rePairId].tokenHash;
+  const secondLogin = await fetch(root+'/dashboard/login',{
+    method:'POST',headers:{Origin:root,'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({password:adminKey}),redirect:'manual'
+  });
+  assert.equal(secondLogin.status,303);
+  const secondCookie = secondLogin.headers.get('set-cookie').split(';')[0];
+  const secondPage = await (await fetch(root+'/dashboard',{headers:{Cookie:secondCookie}})).text();
+  const secondCsrf = secondPage.match(/name="_csrf" value="([^"]+)"/)?.[1];
+  assert(secondCsrf,'new session must have its own CSRF token');
+  const pairResponse = await fetch(root + '/dashboard/devices/' + encodeURIComponent(rePairId) + '/pair-command', {
+    method:'POST',headers:{Cookie:secondCookie,'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({_csrf:secondCsrf})
+  });
+  assert.equal(pairResponse.status,200);
+  assert.equal(pairResponse.headers.get('cache-control'),'no-store');
+  const pairData = await pairResponse.json();
+  assert(pairData.command.includes(root+'/mcp --token ') && !pairData.command.includes('<KHOA_GHEP_NOI>'));
+  const newPairToken = pairData.command.match(/--token ([A-Za-z0-9_-]{40,}) --name pc_one/)?.[1];
+  assert(newPairToken,'command must contain a usable token');
+  const pendingDb = JSON.parse(fs.readFileSync(path.join(testDir,'oauth.json'),'utf8')).devices[rePairId];
+  assert.equal(pendingDb.tokenHash,beforePair,'generating a command must not rotate the active credential');
+  assert.equal(pendingDb.pendingPairHash,createHash('sha256').update(newPairToken).digest('hex'));
+  assert.equal((await (await fetch(root+'/healthz')).json()).connectedDevices,4,'online agent must remain connected');
+  const rePairedSocket = await mockAgent(newPairToken,'pc_one');
+  await wait(180);
+  const promoted = JSON.parse(fs.readFileSync(path.join(testDir,'oauth.json'),'utf8')).devices[rePairId];
+  assert.equal(promoted.tokenHash,createHash('sha256').update(newPairToken).digest('hex'),'pending token must become primary only after registration');
+  assert.equal(promoted.pendingPairHash,undefined,'pending credential must be consumed once');
+  assert(!JSON.stringify(promoted).includes(newPairToken),'pairing token must never be persisted in plaintext');
+  const oldSocket = new WebSocket(root.replace('http:', 'ws:')+'/agent',{headers:{Authorization:'Bearer '+pcOneToken}});
+  const oldResponse = await new Promise(resolve=>{
+    oldSocket.once('unexpected-response',(_request,response)=>resolve(response.statusCode));
+    oldSocket.once('open',()=>{oldSocket.close();resolve(101)});
+    oldSocket.once('error',()=>resolve(0));
+  });
+  assert.equal(oldResponse,401,'old credential must be denied after successful replacement');
+  const replacementProbe = await client.callTool({name:'probe',arguments:{target_device:'pc_one',value:'replacement-ok'}});
+  assert.equal(replacementProbe.content[0].text,'pc_one:replacement-ok');
+  assert.equal(rePairedSocket.readyState,WebSocket.OPEN,'replacement agent must remain connected');
 
   const revoke = await fetch(root + '/dashboard/devices/' + encodeURIComponent(deviceList.find(d => d.alias === 'pc_two').id) + '/revoke', {
     method: 'POST', headers: { Cookie: cookie, Origin: root }, redirect: 'manual'

@@ -38,7 +38,7 @@ fs.writeFileSync(path.join(dir,'db.json'), JSON.stringify({
   },
   defaultDeviceId:'vps',
   usage:{totalCalls:1284,byDevice:{},byTool:{},lastCallAt:now},
-  activity:Array.from({length:activityEntries},(_,i)=>({tool:'history_'+String(i+1),device:i%2?'vps':'kha_pc',status:i%7?'ok':'error',durationMs:20+i,at:new Date().toISOString()}))
+  activity:[...Array.from({length:activityEntries},(_,i)=>({tool:'history_'+String(i+1),device:i%2?'vps':'kha_pc',status:i%7?'ok':'error',durationMs:20+i,at:new Date().toISOString(),...(i%7 ? {} : {error:'Device offline'})})),{tool:'expired_activity',device:'vps',status:'ok',durationMs:1,at:new Date(Date.now()-16*24*60*60*1000).toISOString()}]
 }),{mode:0o600});
 const port=await new Promise((resolve,reject)=>{const s=net.createServer();s.once('error',reject);s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p))})});
 const root='http://127.0.0.1:'+port;
@@ -57,6 +57,9 @@ try {
   let ready=false;
   for(let i=0;i<90;i++){try{if((await fetch(root+'/healthz')).ok){ready=true;break}}catch{}await sleep(100);}
   assert(ready,'test relay did not start: '+logs);
+  const retained=JSON.parse(fs.readFileSync(path.join(dir,'db.json'),'utf8')).activity;
+  assert.equal(retained.length,Math.min(300,activityEntries),'startup must persist bounded and age-limited activity');
+  assert(!retained.some(a=>a.tool==='expired_activity'),'expired events must be removed at startup');
   for(const token of [vpsToken,pcToken]){
     const ws=new WebSocket(root.replace('http','ws')+'/agent',{headers:{Authorization:'Bearer '+token}});
     await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject)});
@@ -89,6 +92,9 @@ try {
   await page.type('#admin-password',admin);
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('.login-form button')]);
   assert((await page.content()).includes('data-view="overview"'),'dashboard did not render');
+  assert.equal(await page.$('.topbar'),null,'header must be removed');
+  assert(await page.$('.sidebar-footer .sidebar-logout button'),'logout must be placed at the bottom of sidebar');
+  assert.equal((await page.$$('.sidebar-logout')).length,1,'logout must have a single form');
   await page.waitForFunction(()=>document.querySelector('#live-health')?.textContent.includes('Trực tiếp'),{timeout:10000});
   const desktop=await page.evaluate(()=>({
     width:document.body.scrollWidth,viewport:innerWidth,
@@ -113,17 +119,16 @@ try {
   assert(!(await page.evaluate(()=>document.querySelector('#devices-dialog')?.open)),'Overview Manage must not open the full devices window');
   assert.equal(await page.$eval('#device-menu-quick-vps',el=>el.querySelectorAll('.dropdown-alias').length),0,'duplicate small device name must be removed');
   assert.equal(await page.$eval('#device-menu-quick-vps .device-dropdown-title',el=>el.textContent),'VPS Production','retain one readable device name');
-  await page.click('#device-menu-quick-vps .dropdown-startup summary');
-  assert((await page.$eval('#device-menu-quick-vps .dropdown-startup',el=>el.textContent)).includes('Đã bật tự khởi động qua systemd'),'VPS startup should be read-only systemd service');
+  assert((await page.$eval('#device-menu-quick-vps .dropdown-static-line',el=>el.textContent)).includes('Đang bật'),'VPS startup should be a compact read-only status');
   assert.equal((await page.$$('#device-menu-quick-vps .dropdown-startup button')).length,0,'cannot disable protected systemd service from dashboard');
   assert.equal(await page.$eval('[data-live-region="preview-devices"] [data-device-id="vps"] .manage-button',el=>el.getAttribute('aria-expanded')),'true');
-  await page.click('#device-menu-quick-vps .dropdown-disclosure summary');
   await page.waitForFunction(()=>{
     const el=document.querySelector('#device-menu-quick-vps');
     const r=el.getBoundingClientRect();
     return r.left>=0 && r.right<=innerWidth+2 && r.top>=0 && r.bottom<=innerHeight+2;
   },{timeout:3000});
-  assert((await page.$eval('#device-menu-quick-vps input[readonly]',el=>el.value)).endsWith('/mcp'),'quick dropdown should show endpoint');
+  assert.equal((await page.$eval('#device-menu-quick-vps .dropdown-command',el=>el.value)),'sudo systemctl start karis-mcp-agent.service','protected VPS should have an immediately usable service command');
+  assert.equal((await page.$$('#device-menu-quick-vps [data-copy-target]')).length,1,'VPS menu must have one copy action');
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-overview-quick-dropdown.png')});
   await page.keyboard.press('Escape');
   assert(!(await page.evaluate(()=>document.querySelector('#device-menu-quick-vps').matches(':popover-open'))),'Escape must close quick dropdown');
@@ -188,9 +193,14 @@ try {
   assert.equal(await page.$('#device-actions-dialog'),null,'no separate options modal should exist');
   const dropdownBounds=await page.$eval('#device-menu-mac-one',el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}});
   assert(dropdownBounds.left>=0&&dropdownBounds.right<=1440,'dropdown must stay in viewport');
-  await page.click('#device-menu-mac-one .dropdown-disclosure summary');
-  assert((await page.$eval('#device-menu-mac-one input[readonly]',e=>e.value)).endsWith('/mcp'),'MCP endpoint available inside dropdown');
-  assert((await page.$eval('#device-menu-mac-one .dropdown-command',e=>e.textContent)).includes('<LINK_GHEP_NOI>'),'lost secret must not be invented');
+  await page.waitForFunction(expected => {
+    const command=document.querySelector('#device-menu-mac-one .dropdown-command')?.value || '';
+    return command.includes(expected+'/mcp --token ') && !command.includes('<KHOA_GHEP_NOI>');
+  },{timeout:5000},root);
+  assert.equal((await page.$$('#device-menu-mac-one .dropdown-command')).length,1,'one command only');
+  assert.equal((await page.$$('#device-menu-mac-one [data-copy-target]')).length,1,'one copy action only');
+  assert.equal(await page.$eval('#device-menu-mac-one .dropdown-copy-command',e=>e.disabled),false,'complete command must be ready to copy');
+  assert(!(await page.content()).includes('Sao chép lệnh mẫu'),'placeholder command must not appear');
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-device-dropdown.png')});
   await page.keyboard.press('Escape');
   assert(!await page.evaluate(()=>document.querySelector('#device-menu-mac-one').matches(':popover-open')),'Escape must close dropdown');
@@ -203,14 +213,30 @@ try {
 
   await page.screenshot({path:path.join(artifacts,'karis-dashboard-desktop.png'),fullPage:true});
   await page.goto(root+'/dashboard?view=activity&page=2',{waitUntil:'domcontentloaded'});
+  await page.screenshot({path:path.join(artifacts,'karis-dashboard-activity.png'),fullPage:true});
   assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,20);
   assert((await page.$eval('[data-live-region="activity-list"]',e=>e.textContent)).includes('history_21'),'second page mismatch');
   assert((await page.$eval('[data-live-region="activity-pagination"]',e=>e.textContent)).includes('21–40'),'pagination range mismatch');
+  assert((await page.$eval('[data-live-region="activity-list"] .activity-row time',e=>e.textContent)).includes('/'),'activity row must show timestamp');
+  assert(await page.$('[data-live-region="activity-list"] .activity-duration'),'activity row must show processing duration');
+  assert.equal(await page.$('.activity-retention'),null,'unnecessary history helper copy should be removed');
+  assert.equal((await page.$eval('.activity-audit summary',e=>e.textContent)).trim(),'Chi tiết','audit expansion label should be compact');
   await page.click('a[rel="next"]');
   assert.equal(new URL(page.url()).searchParams.get('page'),'3');
-  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,Math.min(20,Math.min(500,activityEntries+2)-40));
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,Math.min(20,Math.min(300,activityEntries+2)-40));
+  await page.goto(root+'/dashboard?view=activity&status=error',{waitUntil:'domcontentloaded'});
+  assert((await page.$eval('[data-live-region="activity-list"]',e=>e.textContent)).includes('Thất bại'),'error filter must work');
+  assert((await page.$eval('[data-live-region="activity-list"] .activity-meta',e=>e.textContent)).includes('Thất bại'),'compact status must render');
+  assert(await page.$('[data-live-region="activity-list"] .activity-audit summary'),'audit details must be expandable');
+  await page.evaluate(() => document.querySelector('[data-live-region="activity-list"] .activity-audit summary')?.click());
+  assert((await page.$eval('[data-live-region="activity-list"] .activity-audit',e=>e.textContent)).includes('Chi tiết lỗi cũ được ẩn'),'legacy raw errors must remain hidden');
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('[data-live-region="activity-list"] .activity-meta')].every(e=>e.textContent.includes('Thất bại'))),true,'filtered error list must not show successful calls');
+  await page.select('#activity-device-filter','kha_pc');
+  await page.waitForFunction(()=>new URL(location.href).searchParams.get('device')==='kha_pc',{timeout:3000});
+  assert.equal(new URL(page.url()).searchParams.get('status'),'error','device change must preserve status filter');
+  assert((await page.$eval('[data-live-region="activity-list"]',e=>e.textContent)).includes('kha_pc'),'device filter must work');
   await page.goto(root+'/dashboard?view=activity&page=9999',{waitUntil:'domcontentloaded'});
-  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,((Math.min(500,activityEntries+2))%20)||20,'large activity page should clamp');
+  assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,((Math.min(300,activityEntries+2))%20)||20,'large activity page should clamp');
   await page.goto(root+'/dashboard?view=activity&page=-2',{waitUntil:'domcontentloaded'});
   assert.equal((await page['$$']('[data-live-region="activity-list"] .activity-row')).length,20,'invalid activity page should reset');
   const noConfirm=await page.evaluate(async()=> {
@@ -278,8 +304,11 @@ try {
   const unauthEvents=await fetch(root+'/dashboard/events');
   assert.equal(unauthScript.status,401);
   assert.equal(unauthEvents.status,401);
+  await page.setViewport({width:720,height:900,deviceScaleFactor:1});
+  await page.goto(root+'/dashboard?view=activity',{waitUntil:'domcontentloaded'});
+  assert(await page.evaluate(()=>document.body.scrollWidth<=innerWidth+2),'tablet 720px activity overflow');
   await page.setViewport({width:390,height:844,deviceScaleFactor:1});
-  await page.reload({waitUntil:'domcontentloaded'});
+  await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   const mobile=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:innerWidth,deviceTiles:document.querySelectorAll('[data-live-region="preview-devices"] .device-tile').length,navVisible:[...document.querySelectorAll('.nav a')].length===4&&[...document.querySelectorAll('.nav a')].every(a=>{const r=a.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth})}));
   assert(mobile.width<=mobile.viewport+2,'mobile horizontal overflow: '+JSON.stringify(mobile));
   assert(mobile.navVisible,'all four mobile navigation tabs must be visible');
@@ -289,6 +318,7 @@ try {
     const state=await page.evaluate(()=>({width:document.body.scrollWidth,viewport:innerWidth}));
     assert(state.width<=state.viewport+2,'mobile overflow '+route);
     if(route==='clients') await page.screenshot({path:path.join(artifacts,'karis-dashboard-access-clean-mobile.png')});
+    if(route==='activity') await page.screenshot({path:path.join(artifacts,'karis-dashboard-activity-mobile.png'),fullPage:true});
   }
   await page.goto(root+'/dashboard?view=overview',{waitUntil:'domcontentloaded'});
   await page.evaluate(()=>{
@@ -299,7 +329,7 @@ try {
     button.click(); // Avoid an SSE DOM replacement invalidating Puppeteer's element handle on stress runs.
   });
   assert(await page.evaluate(()=>document.querySelector('#device-menu-quick-vps')?.matches(':popover-open')),'mobile Overview Manage dropdown must open');
-  await page.click('#device-menu-quick-vps .dropdown-disclosure summary');
+  assert.equal((await page.$eval('#device-menu-quick-vps .dropdown-command',e=>e.value)),'sudo systemctl start karis-mcp-agent.service','mobile VPS command must appear without opening details');
   await page.waitForFunction(()=>{
     const r=document.querySelector('#device-menu-quick-vps').getBoundingClientRect();
     return r.left>=0 && r.right<=innerWidth+2 && r.top>=0 && r.bottom<=innerHeight+2;
@@ -321,9 +351,11 @@ try {
   await page.type('#device-name','Laptop thử nghiệm');
   await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('#add-device-dialog .pair-form button[type="submit"]')]);
   assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'new device pairing must auto-open one-time result modal');
-  assert((await page.$eval('#pair-result-dialog',e=>e.textContent)).includes('/pair/'),'pairing dialog must contain generated URL');
+  assert.equal((await page.$$('#pair-result-dialog textarea')).length,1,'new-device dialog must show exactly one complete command');
   assert((await page.$eval('#pair-result-dialog',e=>e.textContent)).includes('desktop-commander remote'),'pairing dialog must contain actual install command');
   const issuedCommand=await page.$eval('#pair-command',e=>e.value);
+  assert(issuedCommand.includes(root+'/mcp --token '),'newly issued command must contain full MCP URL and pairing credential');
+  assert(!issuedCommand.includes('<KHOA_GHEP_NOI>'),'new device command must be directly runnable');
   await page.keyboard.press('Escape');
   await page.reload({waitUntil:'domcontentloaded'});
   assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'pair command must be reopenable during authenticated session');
@@ -346,10 +378,10 @@ try {
     return {status:response.status,location:response.url};
   });
   assert.equal(confirmedRotate.status,200,'confirmed key rotation should reach the updated dashboard');
-  assert(confirmedRotate.location?.includes('&pair='),'rotation should reveal new pairing instructions');
+  assert(confirmedRotate.location?.includes('&pair='),'rotation should reveal a copy-ready command');
   await page.goto(new URL(confirmedRotate.location,root).href,{waitUntil:'domcontentloaded'});
   assert(await page.evaluate(()=>document.querySelector('#pair-result-dialog')?.open),'new key must be displayed after confirmed rotation');
-  assert((await page.$eval('#pair-link',el=>el.value)).includes('/pair/'),'new pairing link must be available');
+  assert((await page.$eval('#pair-command',el=>el.value)).includes(root+'/mcp --token '),'new pairing command must be complete');
   assert.equal(errors.length,0,'browser errors: '+errors.join(';'));
   console.log('PASS: '+(3+additionalDevices)+' devices, '+activityEntries+' paged activities, safe pairing and key rotation, readable dialogs, live status, CSP/CSRF, SSE and responsive UI');
   console.log(JSON.stringify({desktop,mobile,screenshots:['karis-dashboard-login.png','karis-dashboard-desktop.png','karis-dashboard-mobile.png']}));

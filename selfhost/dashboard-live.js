@@ -45,6 +45,15 @@
     }
   };
   document.addEventListener('input', event => { if (event.target?.id === 'device-filter') filterDevices(); });
+  document.addEventListener('change', event => {
+    if (!event.target?.matches?.('[data-activity-device-filter]')) return;
+    const url = new URL(location.href);
+    url.searchParams.set('view','activity');
+    if (event.target.value) url.searchParams.set('device',event.target.value);
+    else url.searchParams.delete('device');
+    url.searchParams.delete('page');
+    location.assign(url.pathname + url.search);
+  });
 
   // Native popovers are dropdowns in the browser's top layer, never modal windows.
   const positionDropdown = panel => {
@@ -60,6 +69,40 @@
     panel.style.left = Math.max(10, Math.min(bounds.right - w, window.innerWidth - w - 10)) + 'px';
     panel.style.top = top + 'px';
   };
+  const loadPairCommand = async connection => {
+    if (connection.dataset.loading === 'true' ||
+      (connection.dataset.loaded === 'true' && Number(connection.dataset.expiresAt) * 1000 > Date.now() + 5000)) return;
+    const field = connection.querySelector('textarea.dropdown-command');
+    const button = connection.querySelector('[data-copy-target]');
+    const status = connection.querySelector('.pair-command-status');
+    const csrf = document.querySelector('.sidebar-logout [name="_csrf"]')?.value;
+    if (!field || !button || !csrf) return;
+    connection.dataset.loading = 'true';
+    button.disabled = true;
+    field.value = '';
+    field.placeholder = 'Đang tải lệnh…';
+    if (status) {status.hidden = true; status.textContent = '';}
+    try {
+      const response = await fetch('/dashboard/devices/' + encodeURIComponent(connection.dataset.pairDevice) + '/pair-command', {
+        method:'POST',credentials:'same-origin',cache:'no-store',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({_csrf:csrf})
+      });
+      const data = await response.json();
+      if (!response.ok || typeof data.command !== 'string' || !data.command.includes(' --token ')) throw Error(data.error || 'Không tạo được lệnh kết nối.');
+      if (!connection.isConnected) return;
+      field.value = data.command;
+      button.disabled = false;
+      connection.dataset.loaded = 'true';
+      connection.dataset.expiresAt = String(data.expiresAt || 0);
+    } catch (error) {
+      if (status) {status.hidden = false;status.textContent = error?.message || 'Không tải được lệnh kết nối.';}
+    } finally {
+      connection.dataset.loading = 'false';
+      const parent = connection.closest('[data-device-popover]');
+      if (parent?.matches(':popover-open')) positionDropdown(parent);
+    }
+  };
   document.addEventListener('toggle', event => {
     const panel = event.target;
     if (!(panel instanceof HTMLElement)) return;
@@ -71,7 +114,11 @@
     if (!panel.matches('[data-device-popover]')) return;
     const button = document.querySelector('[popovertarget="' + panel.id + '"]');
     button?.setAttribute('aria-expanded', String(event.newState === 'open'));
-    if (event.newState === 'open') positionDropdown(panel);
+    if (event.newState === 'open') {
+      positionDropdown(panel);
+      const connection = panel.querySelector('.dropdown-connection[data-pair-device]');
+      if (connection) void loadPairCommand(connection);
+    }
     else if (managerNeedsSync) { managerNeedsSync = false; void refreshVisible(); }
   }, true);
   const closeDropdowns = () => document.querySelectorAll('[data-device-popover]:popover-open').forEach(panel => panel.hidePopover());
@@ -99,14 +146,14 @@
       if (!field) return;
       try {
         await navigator.clipboard.writeText(field.value);
-        announce('Đã sao chép địa chỉ MCP.');
+        announce('Đã sao chép vào clipboard.');
         const original = copy.innerHTML;
         copy.textContent = 'Đã sao chép';
         setTimeout(() => { if (copy.isConnected) copy.innerHTML = original; }, 1600);
       } catch {
         field.focus();
         field.select();
-        announce('Địa chỉ đã được chọn. Nhấn Ctrl+C để sao chép.');
+        announce('Nội dung đã được chọn. Nhấn Ctrl+C để sao chép.');
       }
     }
   });
@@ -147,7 +194,7 @@
         return;
       }
       const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
-      for (const name of ['metrics','preview-devices','recent-activities','activity-list','activity-pagination','client-list','device-full-list','modal-device-list','mcp-status']) {
+      for (const name of ['metrics','preview-devices','recent-activities','activity-summary','activity-list','activity-pagination','client-list','device-full-list','modal-device-list','mcp-status']) {
         const selector = '[data-live-region="' + name + '"]';
         const oldNode = $(selector), newNode = parsed.querySelector(selector);
         if (!oldNode || !newNode) continue;

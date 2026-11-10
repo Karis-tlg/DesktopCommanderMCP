@@ -1776,3 +1776,95 @@ body.login-body{background:#0b1017;color:#eaf0f6;font-family:system-ui,-apple-sy
   margin:0;color:#f0bab3;font-size:14px;line-height:1.5
 }
 .dashboard-body .client-row details:not([open]) > :not(summary){display:none}
+
+/* Compact dashboard navigation and actionable activity history. */
+.dashboard-body .sidebar-footer{display:block;padding:12px 4px 0}
+.dashboard-body .sidebar-logout{width:100%}
+.dashboard-body .sidebar-footer .signout{width:100%;min-height:44px;justify-content:flex-start;gap:12px;padding:10px 15px!important;border-radius:9px}
+.dashboard-body .sidebar-footer .signout:hover{background:#26313c!important;color:#f5fcff!important}
+.dashboard-body .recent-panel .activity-list{column-gap:22px}
+.dashboard-body .activity-row{align-items:flex-start;gap:11px;padding:15px 0}
+.dashboard-body .activity-copy{flex:1 1 auto;min-width:0;gap:6px}
+.dashboard-body .activity-copy strong{display:block;overflow-wrap:anywhere}
+.dashboard-body .activity-details{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;color:#b2c1cf;font-size:12px;line-height:1.45}
+.dashboard-body .activity-details time{color:#9fb2c3;font-size:12px;white-space:normal;margin:0}
+.dashboard-body .activity-state{display:inline-flex;align-items:center;border:1px solid #315c4f;background:#19372f;color:#95e9c8;border-radius:6px;padding:2px 7px;font-weight:660;line-height:1.3}
+.dashboard-body .activity-state.failed{border-color:#65423b;background:#392824;color:#ffc0b0}
+.dashboard-body .activity-row.has-error .activity-symbol{color:#ef9a8e}
+.dashboard-body .activity-error{display:block;font-size:12px;line-height:1.5;color:#e5ada4;overflow-wrap:anywhere}
+.dashboard-body .activity-duration{margin-left:auto;color:#bad0df;white-space:nowrap;flex:none;font:12px/1.8 ui-monospace,Consolas,monospace}
+.dashboard-body .activity-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.dashboard-body .activity-summary>div{display:grid;gap:7px;min-width:0;padding:16px 18px;border:1px solid #31414f;border-radius:11px;background:var(--surface)}
+.dashboard-body .activity-summary span{font-size:13px;color:#aebfcf}
+.dashboard-body .activity-summary strong{font-size:25px;line-height:1.2;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dashboard-body .activity-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:0 0 15px}
+.dashboard-body .activity-tabs{display:flex;gap:5px;flex-wrap:wrap}
+.dashboard-body .activity-tabs a{display:inline-flex;align-items:center;min-height:40px;border:1px solid #344453;background:#1b2732;border-radius:8px;padding:8px 13px;color:#d1dee9;font-size:14px}
+.dashboard-body .activity-tabs a.active{background:#204b3e;border-color:#4fcaaa;color:#caffed}
+.dashboard-body .activity-toolbar label{display:flex;align-items:center;gap:10px;font-size:13px;color:#b9cad8}
+.dashboard-body .activity-toolbar select{max-width:min(100%,270px);min-height:40px;border-radius:8px;background:#1b2732;border:1px solid #405162;color:#e2f0f6;padding:7px 12px;font:14px system-ui,sans-serif}
+.dashboard-body .activity-panel .panel-head{align-items:flex-start}
+.dashboard-body .activity-retention{font-size:12px;color:#9fb1c0;text-align:right;max-width:340px}
+.dashboard-body .activity-panel .activity-row:first-child{border-top:0}
+.dashboard-body .device-dropdown-panel textarea.dropdown-command{width:100%;min-height:105px;max-height:220px;resize:vertical;padding:10px;font:12px/1.6 ui-monospace,Consolas,monospace;color:#c6eede;white-space:pre-wrap;overflow-wrap:anywhere;background:#101923;border:1px solid #364959;border-radius:8px}
+.dashboard-body .dropdown-copy-command,.dashboard-body .dropdown-pair-link{display:flex;align-items:center;justify-content:center;width:100%;min-height:38px;padding:8px 10px;border:1px solid #3d685b;border-radius:8px;background:#204438;color:#b5fce3;font-size:12px;font-weight:650;cursor:pointer;text-decoration:none}
+.dashboard-body .dropdown-copy-command:hover,.dashboard-body .dropdown-pair-link:hover{background:#2b5b4c}
+@media(max-width:950px){.dashboard-body .activity-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:690px){
+  .dashboard-body .sidebar-footer{display:flex;justify-content:flex-end;padding:4px 0 0;border-top:0;margin-top:5px}
+  .dashboard-body .sidebar-logout{width:auto}
+  .dashboard-body .sidebar-footer .signout{width:auto;min-height:38px;font-size:13px;padding:6px 10px!important}
+  .dashboard-body .activity-toolbar{align-items:flex-start;flex-direction:column}
+  .dashboard-body .activity-toolbar label{width:100%;justify-content:space-between}
+  .dashboard-body .activity-toolbar select{width:68%}
+  .dashboard-body .activity-panel .panel-head{flex-direction:column}
+  .dashboard-body .activity-retention{text-align:left}
+  .dashboard-body .activity-row{gap:8px}
+  .dashboard-body .activity-summary>div{padding:13px}
+  .dashboard-body .activity-summary strong{font-size:22px}
+  .dashboard-body .activity-duration{font-size:11px}
+}
+@media(max-width:690px){.dashboard-body .sidebar-footer .signout span{display:inline}}
+
+/* Restore compact activity rows; expanded audit is optional on the Activity page. */
+.dashboard-body .activity-row{align-items:center;padding:12px 0;gap:11px}
+.dashboard-body .activity-copy{display:grid;gap:3px;flex:1;min-width:0}
+.dashboard-body .activity-copy strong{font-size:14px;font-weight:650}
+.dashboard-body .activity-copy .activity-meta{display:block;font-size:12px;color:#acbccb;line-height:1.5;overflow-wrap:anywhere}
+.dashboard-body .activity-copy .activity-meta time{font:inherit;color:inherit}
+.dashboard-body .activity-duration{font:12px/1.6 ui-monospace,Consolas,monospace;color:#a7b9c8;align-self:center}
+.dashboard-body .activity-row.has-error .activity-symbol{color:#eeb0a2}
+.dashboard-body .activity-audit{margin-top:7px;min-width:0}
+.dashboard-body .activity-audit summary{display:inline-flex;align-items:center;min-height:30px;padding:4px 0;cursor:pointer;color:#78dec3;font-size:12px;font-weight:600;list-style:revert}
+.dashboard-body .activity-audit dl{display:grid;gap:9px;margin:8px 0 0;padding:12px;border:1px solid #344554;background:#111a23;border-radius:8px}
+.dashboard-body .activity-audit dl>div{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px}
+.dashboard-body .activity-audit dt{color:#9eb2c3;font-size:12px}
+.dashboard-body .activity-audit dd{margin:0;color:#dce7ef;font-size:12px;overflow-wrap:anywhere}
+.dashboard-body .activity-audit p{margin:8px 0 0!important;color:#9aabb8;font-size:11px}
+.dashboard-body .device-dropdown-panel .dropdown-copy-command:disabled{opacity:.5;cursor:not-allowed}
+.dashboard-body .device-dropdown-panel .pair-command-status{color:#a8c6be;font-size:12px;line-height:1.55}
+.dashboard-body .recent-panel .activity-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:690px){
+ .dashboard-body .recent-panel .activity-list{grid-template-columns:1fr}
+ .dashboard-body .activity-copy strong{font-size:14px}
+ .dashboard-body .activity-copy .activity-meta{font-size:12px}
+ .dashboard-body .activity-duration{font-size:11px}
+ .dashboard-body .activity-audit dl>div{grid-template-columns:1fr;gap:2px}
+}
+
+/* Compact operator menu: one immediately visible command, no helper paragraphs. */
+.dashboard-body .device-dropdown-panel .dropdown-static-line{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:42px;padding:10px 11px;border-top:1px solid #344553;color:#d4e2ea;font-size:13px}
+.dashboard-body .device-dropdown-panel .dropdown-static-line strong{color:#a4e8cb;font-size:12px;font-weight:650}
+.dashboard-body .device-dropdown-panel .dropdown-connection{display:grid;gap:8px;border-top:1px solid #344553;padding:12px 11px 14px;min-width:0}
+.dashboard-body .device-dropdown-panel .dropdown-connection-title{font-weight:650;font-size:14px;color:#e7f2f7}
+.dashboard-body .device-dropdown-panel .dropdown-connection textarea.dropdown-command{display:block;min-height:82px;max-height:150px;margin:0;font-size:12px;line-height:1.5;resize:vertical}
+.dashboard-body .device-dropdown-panel .dropdown-connection .dropdown-copy-command{min-height:40px;margin:0;font-size:13px}
+.dashboard-body .device-dropdown-panel .pair-command-status[hidden]{display:none}
+.dashboard-body .device-dropdown-panel .pair-command-status:not([hidden]){font-size:12px;color:#f2b2a9}
+.dashboard-body .activity-audit{margin-top:4px}
+.dashboard-body .activity-audit summary{min-height:28px;font-size:12px}
+.dashboard-body .activity-audit dl{padding:10px 12px;gap:7px;margin-top:5px}
+.dashboard-body .activity-audit dt,.dashboard-body .activity-audit dd{font-size:12px}
+.dashboard-body .activity-panel .panel-head{padding-bottom:8px}
+.dashboard-body .activity-panel .activity-row{padding:12px 0}
+@media(max-width:690px){.dashboard-body .device-dropdown-panel .dropdown-connection{padding:10px 9px 12px}}

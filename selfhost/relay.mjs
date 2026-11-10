@@ -11,6 +11,7 @@ import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelconte
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { InvalidGrantError, InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { registerDashboard } from './dashboard.mjs';
+import { auditRequest, auditResponse, auditError } from './audit.mjs';
 
 const addr = process.env.KARIS_PUBLIC_URL || 'http://127.0.0.1:18791';
 const issuer = new URL(addr);
@@ -34,6 +35,12 @@ const now = () => Math.floor(Date.now()/1000);
 let db = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath,'utf8')) : {clients:{},codes:{},access:{},refresh:{},devices:{},activity:[],usage:{totalCalls:0,byDevice:{},byTool:{},lastCallAt:null}};
 if (!db.devices || typeof db.devices !== 'object') db.devices = {};
 if (!Array.isArray(db.activity)) db.activity = [];
+const ACTIVITY_LIMIT = 300;
+const ACTIVITY_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const originalActivityCount = db.activity.length;
+const cutoff = Date.now() - ACTIVITY_MAX_AGE_MS;
+db.activity = db.activity.filter(a => a && typeof a.at === 'string' && Number.isFinite(Date.parse(a.at)) && Date.parse(a.at) >= cutoff).slice(0,ACTIVITY_LIMIT);
+const activityPrunedOnLoad = db.activity.length !== originalActivityCount;
 if (!db.usage || typeof db.usage !== 'object') db.usage = {totalCalls:0,byDevice:{},byTool:{},lastCallAt:null};
 if (!Number.isFinite(db.usage.totalCalls)) db.usage.totalCalls = 0;
 if (!db.usage.byDevice || typeof db.usage.byDevice !== 'object') db.usage.byDevice = {};
@@ -42,7 +49,14 @@ if (!db.defaultDeviceId) db.defaultDeviceId = 'vps';
 // In-flight approvals survive a relay restart, but remain short-lived and one-use.
 if (!db.pendingAuthorizations || typeof db.pendingAuthorizations !== 'object' || Array.isArray(db.pendingAuthorizations)) db.pendingAuthorizations = {};
 const save = () => { const dir=path.dirname(dbPath); fs.mkdirSync(dir,{recursive:true,mode:0o700}); const f=dbPath+'.'+process.pid+'.tmp'; fs.writeFileSync(f,JSON.stringify(db),{mode:0o600,flag:'wx'}); fs.renameSync(f,dbPath); };
+if (activityPrunedOnLoad) save();
 const cleanup = () => {
+  for (const record of Object.values(db.devices)) {
+    if (record.pendingPairHash && record.pendingPairExpires <= now()) {
+      delete record.pendingPairHash;
+      delete record.pendingPairExpires;
+    }
+  }
   for (const col of ['codes','access','refresh'])
     for (const [k,v] of Object.entries(db[col])) if (v.exp < now()) delete db[col][k];
   // Dynamic registration is not authorization. Expired, never-approved clients
@@ -273,37 +287,42 @@ const rebuildTools = () => {
     toolMap.set(t.name, { kind: 'manager', originalName: t.name });
   }
 };
-const recordActivity = (deviceId, toolName, status, durationMs, error = '') => {
+const recordActivity = (deviceId, toolName, status, durationMs, error = '', audit = {}) => {
   const record = db.devices[deviceId];
   const device = String(deviceId === 'service' ? 'self-host' : (record?.alias || deviceId || 'unknown')).slice(0, 80);
   const tool = String(toolName || 'unknown').slice(0, 120);
   const entry = { at: new Date().toISOString(), tool, device, status, durationMs: Math.max(0, Math.round(durationMs || 0)) };
-  if (error) entry.error = String(error).slice(0, 180);
+  if (error) entry.error = auditError(error);
+  if (audit?.requestSummary) entry.requestSummary = String(audit.requestSummary).slice(0, 240);
+  if (audit?.responseSummary) entry.responseSummary = String(audit.responseSummary).slice(0, 120);
+  if (audit?.client) entry.client = String(audit.client).slice(0, 80);
   db.activity.unshift(entry);
-  if (db.activity.length > 500) db.activity.length = 500;
+  db.activity = db.activity.filter(a => Number.isFinite(Date.parse(a.at)) && Date.parse(a.at) >= Date.now() - ACTIVITY_MAX_AGE_MS).slice(0,ACTIVITY_LIMIT);
   db.usage.totalCalls = (Number(db.usage.totalCalls) || 0) + 1;
   db.usage.byDevice[device] = (Number(db.usage.byDevice[device]) || 0) + 1;
   db.usage.byTool[tool] = (Number(db.usage.byTool[tool]) || 0) + 1;
   db.usage.lastCallAt = entry.at;
   if (db.usage.totalCalls % 10 === 0) save();
 };
-const rpc = (deviceId, kind, args = {}, ms = 45000) => new Promise((resolve, reject) => {
+const rpc = (deviceId, kind, args = {}, ms = 45000, context = {}) => new Promise((resolve, reject) => {
+  const audit = {client:context.client || 'MCP',requestSummary:kind === 'call' ? auditRequest(args.name,args.arguments) : auditRequest(kind,args)};
   const started = Date.now();
   const toolName = kind === 'call' ? args.name : kind === 'ping' ? 'ping_device' : kind === 'shutdown' ? 'shutdown_device_agent' : kind;
   const ws = devices.get(deviceId)?.ws;
   if (!ws || ws.readyState !== 1) {
-    recordActivity(deviceId, toolName, 'error', Date.now() - started, 'Device offline');
+    recordActivity(deviceId, toolName, 'error', Date.now() - started, 'Device offline',audit);
     reject(new Error('Device offline')); return;
   }
   const id = randomUUID();
   let recorded = false;
-  const finish = (status, error = '') => {
+  const finish = (status, error = '', result = null) => {
     if (recorded) return;
     recorded = true;
-    recordActivity(deviceId, toolName, status, Date.now() - started, error);
+    recordActivity(deviceId, toolName, status, Date.now() - started, error,
+      {...audit,responseSummary:status === 'ok' ? auditResponse(result) : 'Phản hồi lỗi (nội dung ẩn)'});
   };
   const task = {
-    resolve: value => { finish('ok'); resolve(value); },
+    resolve: value => { finish('ok','',value); resolve(value); },
     reject: error => { finish('error', error?.message || error); reject(error); },
     timer: null, ws
   };
@@ -383,7 +402,7 @@ const handleMcp = async (req, res, forcedDevice = null) => {
         recordActivity('service', route.originalName, 'ok', 0);
         const requested = Number(args.limit || 20);
         const limit = Number.isFinite(requested) ? Math.max(1, Math.min(100, Math.floor(requested))) : 20;
-        return textResult((db.activity || []).slice(0, limit));
+        return textResult((db.activity || []).slice(0, limit).map(a => ({...a, ...(a.error ? {error:auditError(a.error)} : {})})));
       }
       if (route.originalName === 'get_usage_statistics') {
         recordActivity('service', route.originalName, 'ok', 0);
@@ -423,7 +442,10 @@ const handleMcp = async (req, res, forcedDevice = null) => {
     if (!Array.isArray(record.tools) || !record.tools.some(t => t.name === route.originalName)) {
       return toolError('Tool ' + route.originalName + ' is not available on device ' + record.alias + '.');
     }
-    try { return await rpc(record.id, 'call', { name: route.originalName, arguments: callArgs }, 50000); }
+    const clientId = req.auth?.clientId;
+    const client = clientId && db.clients?.[clientId];
+    const clientLabel = typeof client?.client_name === 'string' ? client.client_name : (clientId ? 'Ứng dụng OAuth' : 'MCP liên kết riêng');
+    try { return await rpc(record.id, 'call', { name: route.originalName, arguments: callArgs }, 50000, {client:clientLabel}); }
     catch (e) { return toolError(e.message); }
   });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -495,6 +517,15 @@ wss.on('connection', ws => {
       if (!Array.isArray(msg.tools) || !msg.tools.length) { ws.close(1008, 'No supported MCP tools'); return; }
       const clean = msg.tools.filter(t => t && typeof t.name === 'string' && /^[\w.-]+$/.test(t.name)).slice(0, 100).map(sanitizeTool);
       if (!clean.length) { ws.close(1008, 'No supported MCP tools'); return; }
+      if (authInfo?.pending) {
+        if (record.pendingPairHash !== authInfo.pendingHash || record.pendingPairExpires <= now()) {
+          ws.close(1008,'Pairing command expired'); return;
+        }
+        record.tokenHash = record.pendingPairHash;
+        delete record.pendingPairHash;
+        delete record.pendingPairExpires;
+        record.updatedAt = now();
+      }
       const old = devices.get(id);
       if (old && old.ws !== ws) old.ws.close(1000, 'Device reconnected');
       record.tools = clean;
@@ -536,8 +567,11 @@ appServer.on('upgrade', (req, socket, head) => {
   }
   const hash = digest(bearer);
   const matched = Object.values(db.devices).find(d => d.tokenHash === hash);
+  const pendingMatch = !matched && Object.values(db.devices).find(d => d.pendingPairHash === hash && d.pendingPairExpires > now() && !d.revokedAt);
   let authInfo = null;
-  if (matched) {
+  if (pendingMatch) {
+    authInfo = {id:pendingMatch.id,legacy:false,pending:true,pendingHash:hash};
+  } else if (matched) {
     if (matched.revokedAt) { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); socket.destroy(); return; }
     authInfo = { id: matched.id, legacy: false };
   } else if (equal(bearer, agentKey) && !db.legacyVpsRevoked && !db.devices.vps) {
