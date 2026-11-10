@@ -1,69 +1,116 @@
-# Karis Control — vận hành self-hosted
+# Karis Control — Self-Host Operations Reference
 
-**Ứng dụng độc lập** dựa trên Desktop Commander MCP (MIT). Tài liệu này dành cho người quản trị relay/VPS, **không** dành cho người dùng chỉ muốn ghép nối máy Windows/Linux. Quy trình ghép nối máy: [README.md](README.md).
+This document is for administrators of the Karis Control relay and dashboard. For an overview and user setup, see the [README](README.md). For **new Linux installations**, start with the [host installation guide](deploy/README.md).
 
-## Kết nối hiện tại
+> [!CAUTION]
+> Do not run the fresh-host installer on a server that already has a Karis deployment. It intentionally refuses to replace existing Karis systemd units. Plan and back up any migration of a manually configured host separately.
 
-- Dashboard: `https://panel-rs.tail79e063.ts.net/dashboard`
-- MCP OAuth: `https://panel-rs.tail79e063.ts.net/mcp`
-- Relay nội bộ: `http://127.0.0.1:18791` sau reverse proxy HTTPS
-- VPS project: `/home/ubuntu/workspace/projects/desktop-commander-selfhost/`
-- Source: `source/`; dữ liệu production và khóa ở `runtime/private/` (**không commit**)
-- Service: `karis-mcp-relay.service`, `karis-mcp-agent.service`
+## System components
 
-Đây là cấu hình đang dùng trên VPS mẫu, **không mặc định phù hợp với máy chủ mới**.
+A Karis deployment can include:
 
-## Thiết lập server mới (tự động hóa)
+- **Relay and dashboard:** `selfhost/relay.mjs`, which exposes OAuth/MCP and authenticated device management.
+- **Local VPS agent:** `dist/index.js remote --no-save`, which connects over an authenticated WebSocket.
+- **Private runtime data:** device state, credentials, and environment configuration stored outside the Git repository.
+- **HTTPS entry point:** Tailscale Funnel or a reverse proxy forwarding public HTTPS requests to a loopback-only relay.
 
-Yêu cầu VPS Linux có Node.js 22.12+, npm, Git, Bash, sudo; chọn một trong hai cách HTTPS.
+A typical installed system exposes:
 
-**Nhanh nhất với Tailscale đã đăng nhập và bật Funnel:**
+```text
+https://your-host.example/dashboard    # Administrative UI
+https://your-host.example/mcp          # OAuth-protected MCP endpoint
+http://127.0.0.1:18791                # Relay loopback listener (not public)
+```
+
+These addresses are examples; use the endpoints displayed by your own host installation.
+
+## Install a new Linux host
+
+Prerequisites: Node.js 22.12+, npm, Git, Bash, curl, systemd, sudo access from a non-root account, and HTTPS via Tailscale Funnel or an existing reverse proxy.
+
+With Tailscale already authenticated and Funnel authorized:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Karis-tlg/DesktopCommanderMCP/main/deploy/install-host.sh) --tailscale
 ```
 
-**Nếu đã có domain/reverse proxy HTTPS:**
+With your own HTTPS domain and configured reverse proxy:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Karis-tlg/DesktopCommanderMCP/main/deploy/install-host.sh) --url https://mcp.example.com
+bash <(curl -fsSL https://raw.githubusercontent.com/Karis-tlg/DesktopCommanderMCP/main/deploy/install-host.sh) --url https://your-host.example
 ```
 
-Installer tạo các khóa ngẫu nhiên, cấu hình relay/agent, service systemd, build source, kiểm tra sức khỏe và in URL panel/MCP. Nó từ chối cài đè dịch vụ Karis/Tailscale hiện có. Mật khẩu quản trị chỉ được lưu ở file owner-only và hiện trong terminal tương tác, không đưa vào log. Với domain riêng, **bạn phải cấu hình TLS và reverse proxy trước** — installer không tự thay Nginx/Caddy.
+Review the installer before execution. The installer generates private credentials, checks service conflicts, builds the source, configures systemd, and verifies local health. It does not install/configure your domain proxy, change firewall rules, or replace existing networking routes.
 
-Sau cài dùng `$HOME/.local/bin/karis status`, `doctor`, `update --yes` hoặc `rollback --yes`. Hướng dẫn đầy đủ, preflight/dry-run và giới hạn an toàn: **[deploy/README.md](deploy/README.md)**.
+See [Host installation](deploy/README.md) for preflight checks, custom ports, and troubleshooting.
 
-Đây là quy trình **cho VPS mới**. VPS hiện tại đã có service Karis chạy theo đường dẫn riêng; không dùng installer mới để ghi đè/migrate trực tiếp. Sau lần cài server, kết nối mỗi thiết bị mới bằng một lệnh từ dashboard.
+## Managing an installer-managed host
 
-## Kiểm tra và khởi động lại khi được phép
+```bash
+~/.local/bin/karis status
+~/.local/bin/karis doctor
+~/.local/bin/karis update --dry-run
+~/.local/bin/karis update --yes
+~/.local/bin/karis rollback --yes
+```
 
-```sh
+The installer keeps active releases under `~/.local/share/karis-control/current`, previous builds under `releases/`, and private files under `private/`. Updates and rollback can change only managed Karis services after explicit approval and sudo authorization.
+
+On a manually deployed legacy host, these commands may not apply. Use the existing service-management procedure appropriate to that deployment; do **not** assume service names or filesystem locations are universally identical.
+
+## Service inspection
+
+On a system using the default Karis systemd unit names:
+
+```bash
 sudo systemctl status karis-mcp-relay.service karis-mcp-agent.service
 curl -fsS http://127.0.0.1:18791/healthz
 journalctl -u karis-mcp-relay.service -u karis-mcp-agent.service -n 80 --no-pager
 ```
 
-Sau khi cập nhật mã nguồn relay, kiểm thử trên cổng riêng trước khi cân nhắc restart production. Quy trình cũ `deploy/restart-selfhost.sh` có thể tác động tới **cả relay và agent**; nếu chỉ thay đổi dashboard/relay thì ưu tiên restart chính xác `karis-mcp-relay.service` bởi người có quyền. Không tự dừng Nginx, Tailscale, SSH, Docker hay các service khác.
+Service logs may contain operational details; redact sensitive information before sharing them.
 
-## Đóng gói và phát hành
+The legacy helper `deploy/restart-selfhost.sh` restarts **both** Karis services. Avoid using it when only a relay restart is necessary, and never restart production simply to run tests.
 
-```sh
+## Configuration and secrets
+
+The relay's configuration includes the following environment variable names:
+
+| Variable | Meaning |
+| --- | --- |
+| `KARIS_PUBLIC_URL` | External HTTPS origin for OAuth and dashboard |
+| `KARIS_BIND`, `KARIS_PORT` | Internal listening interface and port |
+| `KARIS_DB_FILE` | Persistent local device and OAuth state |
+| `KARIS_ADMIN_FILE` | Private administrator credential file |
+| `KARIS_AGENT_FILE` | Private local agent credential file |
+| `KARIS_LINK_KEY_FILE` | Private link credential file |
+| `KARIS_AGENT_PACKAGE_URL` | Pinned GitHub release package used for pairing commands |
+
+Credentials should be independent and randomly generated, with owner-only filesystem permissions. Never copy credentials from another host or commit runtime files. Changing `KARIS_PUBLIC_URL` affects OAuth identity and must be planned and tested.
+
+## Release packaging
+
+To build from source:
+
+```bash
 npm ci --ignore-scripts
 npm run build
 node selfhost/test-audit.mjs
-node selfhost/test-dashboard-ui.mjs
 node selfhost/test-multi-device.mjs
+node selfhost/test-dashboard-ui.mjs
+node deploy/test-host-setup.mjs
 npm pack --dry-run
 ```
 
-Kiểm tra gói cài có `dist/index.js`, `dist/selfhost/agent.mjs`, `dist/selfhost/controllers.mjs`, `dist/selfhost/startup.mjs`, `dist/selfhost/windows-ui.mjs`. Đăng gói theo tag/release độc lập của Karis; không sử dụng `.github/workflows/release.yml` cũ của upstream hay publish sang npm/MCP registry của upstream.
+The agent release must contain `dist/index.js` and `dist/selfhost/{agent,controllers,startup,windows-ui}.mjs`. Releases are distributed independently via [Karis GitHub Releases](https://github.com/Karis-tlg/DesktopCommanderMCP/releases). Do not publish under upstream Desktop Commander credentials or assume an npm registry package exists.
 
-## Lưu ý bảo mật
+## Security checklist
 
-- Chỉ cho phép ứng dụng MCP đáng tin cậy; quyền file và terminal của agent là quyền user chạy agent.
-- Phải bảo vệ dashboard bằng HTTPS, đăng nhập quản trị và CSRF; mọi khóa ghép nối có hạn, không được đưa vào query/log hoặc ảnh chụp.
-- Server lưu hash token của thiết bị; DB, profile, cache, secret và bản backup thuộc production, không xóa khi dọn repository.
-- Hoạt động MCP được ghi dưới dạng tóm tắt đã lọc nội dung nhạy cảm; không giả định hệ thống thay thế được audit bảo mật đầy đủ.
-- Nếu có lỗi kết nối, xác minh Node version, release agent, thời hạn khóa, WebSocket và sức khỏe relay trước khi reset/rotate khóa. Việc cấp lại khóa cho máy đang kết nối cần xác nhận rõ.
+- Keep the relay bound to loopback; terminate TLS at a trusted HTTPS entry point.
+- Enable OAuth and dashboard authentication; authorize only trusted AI clients.
+- Run agents as minimally privileged users or within isolated environments.
+- Back up state and credentials securely before updates.
+- Confirm both relay and agent health before declaring a deployment successful.
+- Do not confuse command restrictions or activity summaries with an OS security boundary.
 
-Nguồn gốc mã: [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP), MIT; dự án Karis tự chịu trách nhiệm thay đổi và phát hành của mình.
+Refer to [Security](SECURITY.md), [Privacy](PRIVACY.md), and [Contributing](CONTRIBUTING.md).

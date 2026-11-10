@@ -1,22 +1,42 @@
-# Quyền riêng tư — Karis Control self-hosted
+# Privacy and Data Handling
 
-**Karis Control** là dự án phát triển độc lập, sử dụng các công cụ mã nguồn mở của Desktop Commander theo MIT. Văn bản này mô tả tính năng **relay và agent self-hosted** của Karis, không phải dịch vụ Desktop Commander thương mại.
+Karis Control is an independently maintained, self-hosted MCP project. This document describes how its **relay, dashboard, and agent** handle data. It is not a privacy statement for the upstream hosted Desktop Commander service, your AI client, operating-system tools, or third-party software you install.
 
-## Dữ liệu đi qua hệ thống
+## What passes through the relay
 
-Khi một ứng dụng AI được bạn cấp quyền qua OAuth, relay chuyển yêu cầu MCP đến thiết bị mà bạn ghép nối. Yêu cầu có thể bao gồm tên file, đường dẫn, lệnh terminal và dữ liệu được ứng dụng AI gửi để thực hiện tác vụ. **Vì vậy quản trị viên và thiết bị có quyền cao phải được tin cậy**. Nội dung yêu cầu/phản hồi được xử lý trong bộ nhớ khi thực hiện tác vụ; một số tool, ứng dụng, hệ điều hành hoặc lệnh do người dùng chạy có thể tự tạo log độc lập.
+When you authorize an AI application through OAuth, the Karis relay forwards the MCP calls you approve to a paired device. Those calls can include file paths, terminal commands, text arguments, and tool results. The relay and agents process that information to carry out the requested operation.
 
-Karis relay lưu cục bộ trên VPS cấu hình thiết bị, thông tin client OAuth, token truy cập dạng hash, trạng thái và bộ đếm lượt gọi. Audit cho từng thao tác chỉ lưu tên tool, thiết bị, ứng dụng gọi, trạng thái, thời điểm, thời gian xử lý và tóm tắt loại tác vụ đã giới hạn thông tin. Nó không chủ đích lưu **prompt, lệnh shell thô, đường dẫn tệp hoặc nội dung file** trong lịch sử hoạt động; bản ghi audit tối đa **300 mục trong 14 ngày**. Một số hệ thống báo lỗi bên ngoài vẫn có thể lưu thông tin riêng.
+**Do not assume that a connected AI application, a shell command, your operating system, or third-party tools will avoid logging data simply because the Karis activity dashboard is redacted.** They may retain their own records under separate policies.
 
-Khóa ghép nối và OAuth được tạo riêng cho từng client/thiết bị. Server lưu hash các khóa thiết bị trong cơ sở dữ liệu local; lệnh kết nối có khóa dùng một lần/giới hạn thời gian được hiển thị cho quản trị viên trong phiên đăng nhập, do đó cần bảo vệ khỏi ảnh chụp hoặc chia sẻ nhầm. Mật khẩu quản trị và file `.env` được lưu **ngoài repository** trong vùng có quyền truy cập hạn chế.
+## What Karis stores
 
-Agent self-hosted khởi tạo local MCP với biến `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` và `KARIS_DISABLE_TOOL_HISTORY=1`, để tránh thu thập telemetry/tool history từ phần local MCP phát sinh trong tác vụ remote. Nếu bạn chạy **local Desktop Commander độc lập** hoặc phần mềm bên thứ ba, hãy kiểm tra chính sách và cấu hình của các thành phần đó; chúng không tự được bao phủ bởi các biến môi trường của relay Karis.
+The self-hosted relay maintains local operational state such as:
 
-## Kiểm soát
+- Device identities, registration and revocation state, and tool availability.
+- OAuth client authorizations and session/token metadata.
+- Hashed device credentials and relevant authentication state.
+- Usage counters and a bounded history of tool activity.
 
-- Quản trị viên dashboard có thể xem lịch sử tóm tắt, danh sách client được cấp quyền, ghép nối và thu hồi thiết bị, xóa hoặc thu hồi OAuth client theo chức năng cung cấp.
-- Người điều hành máy chủ chịu trách nhiệm lưu giữ, sao lưu và xóa dữ liệu máy chủ trong `runtime/private` theo chính sách riêng, không dựa vào việc xóa branch hoặc commit Git.
-- HTTPS/TLS nên được bật ở reverse proxy. Không cấp quyền MCP cho ứng dụng hoặc tài khoản không đáng tin cậy.
-- Để hỏi hoặc báo vấn đề, dùng [GitHub Issues](https://github.com/Karis-tlg/DesktopCommanderMCP/issues), **không đăng token, file cấu hình hoặc log chứa dữ liệu nhạy cảm**.
+Activity records contain metadata such as the tool, target device, invoking client, status, timestamp, processing duration, and a limited action/result summary. **The activity audit is designed not to persist raw prompts, shell commands, file contents, file paths, or tool response bodies.** This history is capped at **300 entries or 14 days**, whichever limit is reached first, within the relay's normal retention behavior.
 
-Code gốc Desktop Commander có giấy phép và tài liệu riêng: [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP). Karis không đại diện cho nhà phát triển upstream.
+These summaries are useful for operations but are **not** a complete security or forensic audit.
+
+## Credentials and local files
+
+Pairing commands contain short-lived device credentials and are intended only for the logged-in administrator. The relay stores device credential hashes; never copy an active pairing command into public documentation, issue reports, screenshots, or chat messages.
+
+On a self-hosted installation, administrator credentials, local agent secrets, environment files, data stores, and backups are maintained by the host operator outside the public repository. Host operators control their own filesystem access, backups, retention, and destruction policies.
+
+A Karis device agent launches its local MCP child process with telemetry and tool-history collection disabled for that process through `DESKTOP_COMMANDER_DISABLE_TELEMETRY=1` and `KARIS_DISABLE_TOOL_HISTORY=1`. These settings do **not** determine the behavior of AI clients or unrelated local applications.
+
+## Your controls and responsibilities
+
+Administrators can manage paired devices and authorized clients using the available dashboard functions, including revocation. The host operator is responsible for the underlying server, logs, backups, TLS, disk permissions, and any additional data collection outside the Karis relay.
+
+Only connect clients you trust, use least-privilege operating-system accounts, and review [Security](SECURITY.md) for guidance on isolating sensitive workloads.
+
+For non-sensitive documentation or privacy improvements, propose changes through [Karis Control Pull Requests](https://github.com/Karis-tlg/DesktopCommanderMCP/pulls). The repository's Issues and Discussions features are not currently enabled. For security-sensitive concerns, follow the [security reporting guidance](SECURITY.md).
+
+## Upstream acknowledgements
+
+Karis incorporates MIT-licensed components from [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP), but Karis and upstream are separately maintained. This privacy description applies only to the Karis self-hosted features identified above.

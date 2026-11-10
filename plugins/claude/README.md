@@ -1,19 +1,19 @@
-# Desktop Commander Claude Code Plugin
+# Claude Code Plugin — Upstream Compatibility Assets
 
-Desktop Commander gives Claude Code access to a local MCP server for terminal sessions, filesystem work, structured documents, search, process management, and SSH workflows — plus a set of skills that steer the agent toward those capabilities for common tasks.
+This directory contains Claude Code plugin material inherited from [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP). It includes agent-oriented skills for terminal work, local files, tooling setup, system health checks, and knowledge-base workflows.
 
-## Components
+## Karis Control users
 
-- MCP server: `desktop-commander`, installed with `npx -y @wonderwhy-er/desktop-commander@latest`.
-- Skill: `desktop-commander-overview` — explains when to use Desktop Commander MCP tools and how common workflows compose.
-- Skill: `terminal` — persistent shells/REPLs, SSH, Windows PowerShell, process/port inspection, and saving recurring workflows as scripts.
-- Skill: `computer-health-check` — read-only system health check (CPU, memory, disk, battery, startup) with safe, opt-in cleanups.
-- Skill: `ai-tools-setup` — install, configure, and repair Claude Desktop, MCP servers, and local AI tooling (mcp.json / claude_desktop_config.json).
-- Skill: `knowledge-base` — build and maintain a Markdown knowledge base any AI agent can navigate without a vector database.
-- Skill: `obsidian-vault` — organize Obsidian vaults: MOCs, wikilinks, properties, Dataview/Bases dashboards, and orphan/link cleanup.
+The self-hosted Karis Control workflow is **different from installing upstream Desktop Commander**:
 
-## Usage
+1. Install a [Karis relay host](../../deploy/README.md), or use an existing trusted Karis host.
+2. Connect your supported AI application to `https://<your-host>/mcp` through OAuth.
+3. Pair a computer from the Karis dashboard using its generated `npx` command.
 
-Install the plugin in Claude Code, then ask Claude to use Desktop Commander when it needs persistent shells, long-running processes, local file reads, Excel/DOCX/PDF handling, large CSV analysis, remote SSH sessions, a system health check, AI-tooling setup, or knowledge-base/Obsidian organization.
+See the [main README](../../README.md) for the actual Karis setup path.
 
-For full project documentation, see the repository README.
+## Plugin scope
+
+The plugin templates and skills here originate from the upstream Desktop Commander ecosystem. They may still reference upstream npm packages or hosted-service behavior. They are preserved as compatibility and development material and **are not an alternative Karis Control installer**. Review their commands and permissions before using them.
+
+Contributions that improve Karis compatibility are welcome; see [Contributing](../../CONTRIBUTING.md), [Security](../../SECURITY.md), and the [MIT License](../../LICENSE).

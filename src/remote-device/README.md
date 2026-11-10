@@ -1,9 +1,24 @@
-# Remote device — lưu ý về kiến trúc Karis
+# Remote Device Integration Notes
 
-Karis Control sử dụng **agent self-hosted** tại `selfhost/agent.mjs`, không phải dịch vụ đăng nhập `mcp.desktopcommander.app` của Desktop Commander upstream.
+This directory contains remote-device code inherited from the original [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) project.
 
-Để kết nối máy Windows/Linux/macOS với Karis, làm theo [README.md](../../README.md): thêm endpoint OAuth `/mcp` vào AI app, mở dashboard Karis, tạo thiết bị và **sao chép một lệnh** từ bảng điều khiển lên máy cần ghép nối (Node.js 22.12+).
+## Using Karis Control
 
-Các file TypeScript trong thư mục `src/remote-device/` được kế thừa từ dự án Desktop Commander và còn được dùng cho phần hỗ trợ công cụ/CLI hoặc thử nghiệm tương thích. **Không** sử dụng các hướng dẫn đăng nhập hosted vendor cũ để kết nối Karis. Thay đổi kiến trúc/cắt bỏ các module này cần dependency audit và bộ test riêng, không được xóa chỉ vì trùng chức năng với `selfhost/agent.mjs`.
+For Karis's own self-hosted connection workflow, use the agent in [`selfhost/agent.mjs`](../../selfhost/agent.mjs) rather than an upstream hosted Desktop Commander account:
 
-Bản quyền các phần code kế thừa giữ theo [LICENSE](../../LICENSE).
+1. Install or access a [Karis host](../../deploy/README.md).
+2. Connect a trusted AI client to the host's `/mcp` endpoint and authorize it through OAuth.
+3. Sign in to the dashboard, create or select a device, and copy its generated pairing command.
+4. Run that command on the target computer with Node.js 22.12+.
+
+The pairing command selects the released Karis agent package and contains an expiring credential. Keep that command private.
+
+## About the inherited source
+
+The TypeScript files here remain part of the broader Desktop Commander-derived codebase for compatibility and development. They are **not** the recommended setup path for the self-hosted Karis relay.
+
+Do not replace Karis's agent with upstream hosted-service launchers merely because their names are similar. Removing or refactoring these modules should follow an import/dependency audit and the relevant integration tests.
+
+For user instructions see the [main README](../../README.md). For development guidelines see [Contributing](../../CONTRIBUTING.md) and [Security](../../SECURITY.md).
+
+Original components retain their applicable [MIT license](../../LICENSE) and attribution.

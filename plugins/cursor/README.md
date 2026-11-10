@@ -1,20 +1,19 @@
-# Desktop Commander Cursor Plugin
+# Cursor Plugin — Upstream Compatibility Assets
 
-Desktop Commander gives Cursor agents access to a local MCP server for terminal sessions, filesystem work, structured documents, search, process management, and SSH workflows — plus skills and a rule that steer the agent toward those capabilities.
+This directory contains Cursor plugin resources inherited from [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP). It includes rules and skills for local terminal sessions, file operations, development environments, and knowledge-management workflows.
 
-## Components
+## Use Karis Control
 
-- MCP server: `desktop-commander`, installed with `npx -y @wonderwhy-er/desktop-commander@latest`.
-- Rule: `rules/desktop-commander-default.mdc` — always-on guidance for when to prefer Desktop Commander's tools.
-- Skill: `desktop-commander-overview` — explains when to use Desktop Commander MCP tools and how common workflows compose.
-- Skill: `terminal` — persistent shells/REPLs, SSH, Windows PowerShell, process/port inspection, and saving recurring workflows as scripts.
-- Skill: `computer-health-check` — read-only system health check (CPU, memory, disk, battery, startup) with safe, opt-in cleanups.
-- Skill: `ai-tools-setup` — install, configure, and repair Claude Desktop, MCP servers, and local AI tooling (mcp.json / claude_desktop_config.json).
-- Skill: `knowledge-base` — build and maintain a Markdown knowledge base any AI agent can navigate without a vector database.
-- Skill: `obsidian-vault` — organize Obsidian vaults: MOCs, wikilinks, properties, Dataview/Bases dashboards, and orphan/link cleanup.
+Karis Control is a separate, independently maintained self-hosted MCP workflow:
 
-## Usage
+1. Set up a [Karis relay host](../../deploy/README.md) or use one managed by someone you trust.
+2. Connect a compatible AI client to `https://<your-host>/mcp` through OAuth.
+3. Pair the devices you own using the complete command generated in the Karis dashboard.
 
-Install the plugin in Cursor, then ask the agent to use Desktop Commander when it needs persistent shells, long-running processes, local files outside the workspace, Excel/DOCX/PDF handling, large CSV analysis, remote SSH sessions, a system health check, AI-tooling setup, or knowledge-base/Obsidian organization.
+The [main README](../../README.md) provides the supported setup flow.
 
-For full project documentation, see the repository README.
+## About these files
+
+These templates are part of the upstream-derived plugin ecosystem, not an official standalone Karis installer. Some existing rule or skill content may still refer to upstream npm packages or services. Review it before use; **do not assume installing upstream Desktop Commander automatically connects to your Karis relay**.
+
+For improvements and compatibility changes, see [Contributing](../../CONTRIBUTING.md) and [Security](../../SECURITY.md). License terms and acknowledgements are in [LICENSE](../../LICENSE).
